@@ -1,0 +1,41 @@
+{
+  "host": "0.0.0.0",
+  "ports": [8080, 8081],
+  "timeout": 30,
+  "client_max_body_size": 10485760,
+  "error_pages": {
+    "400": "error_pages/400.html",
+    "403": "error_pages/403.html",
+    "404": "error_pages/404.html",
+    "405": "error_pages/405.html",
+    "413": "error_pages/413.html",
+    "500": "error_pages/500.html"
+  },
+  "routes": [
+    {
+      "path": "/",
+      "root": "www",
+      "default_file": "index.html",
+      "allowed_methods": ["GET"],
+      "directory_listing": false
+    },
+    {
+      "path": "/uploads",
+      "root": "www/uploads",
+      "allowed_methods": ["GET", "POST", "DELETE"],
+      "directory_listing": true
+    },
+    {
+      "path": "/cgi-bin",
+      "root": "cgi-bin",
+      "allowed_methods": ["GET", "POST"],
+      "cgi_extension": ".py",
+      "cgi_path": "/usr/bin/python3"
+    },
+    {
+      "path": "/redirect-test",
+      "redirect_url": "/",
+      "redirect_code": 301
+    }
+  ]
+}
