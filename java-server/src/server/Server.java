@@ -1,7 +1,7 @@
 package server;
 
-import java.io.IOException;
 import config.ServerConfig;
+import java.io.IOException;
 import utils.Logger;
 
 public class Server {
