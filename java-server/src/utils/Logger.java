@@ -74,22 +74,22 @@ public class Logger {
     }
     
     private static String getLevelColor(String level) {
-        switch (level) {
-            case "DEBUG": return CYAN;
-            case "INFO":  return GREEN;
-            case "WARN":  return YELLOW;
-            case "ERROR": return RED;
-            default:      return RESET;
-        }
+        return switch (level) {
+            case "DEBUG" -> CYAN;
+            case "INFO" -> GREEN;
+            case "WARN" -> YELLOW;
+            case "ERROR" -> RED;
+            default -> RESET;
+        };
     }
     
     private static String getTagColor(String level) {
-        switch (level) {
-            case "DEBUG": return BRIGHT_BLUE;
-            case "INFO":  return CYAN;
-            case "WARN":  return YELLOW;
-            case "ERROR": return RED;
-            default:      return RESET;
-        }
+        return switch (level) {
+            case "DEBUG" -> BRIGHT_BLUE;
+            case "INFO" -> CYAN;
+            case "WARN" -> YELLOW;
+            case "ERROR" -> RED;
+            default -> RESET;
+        };
     }
 }
