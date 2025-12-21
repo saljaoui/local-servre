@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+
 import utils.Logger;
 
 public class ConnectionHandler {
@@ -19,9 +20,56 @@ public class ConnectionHandler {
 
     // Connection state
     private State state;
-    private StringBuilder requestData;
+    private final StringBuilder requestData;
     private byte[] responseData;
     private int responsePosition;
+    private boolean writeComplete;
+
+        private boolean checkRequestComplete() {
+        String request = requestData.toString();
+        
+        // Check for end of headers (\r\n\r\n)
+        int headerEnd = request.indexOf("\r\n\r\n");
+        if (headerEnd == -1) {
+            return false; // Headers not fully received yet
+        }
+        
+        // If we've already processed headers, check if we have the full body
+        if (state == State.PROCESSING) {
+            // For GET/HEAD/DELETE/etc. requests, no body is expected
+            String firstLine = request.split("\r\n")[0].toUpperCase();
+            if (firstLine.startsWith("GET ") || firstLine.startsWith("HEAD ") || firstLine.startsWith("DELETE ")) {
+                return true;
+            }
+            
+            // For requests with body, check Content-Length
+            String[] headers = request.substring(0, headerEnd).split("\r\n");
+            int contentLength = 0;
+            
+            for (String line : headers) {
+                if (line.toLowerCase().startsWith("content-length:")) {
+                    try {
+                        contentLength = Integer.parseInt(line.substring(15).trim());
+                        break;
+                    } catch (NumberFormatException e) {
+                        Logger.error(TAG, "Invalid Content-Length header", e);
+                        return true; // Invalid header, but we'll process what we have
+                    }
+                }
+            }
+            
+            // If no content length or content length is 0, request is complete
+            if (contentLength <= 0) {
+                return true;
+            }
+            
+            // Check if we've received the full body
+            int bodyStart = headerEnd + 4; // +4 for \r\n\r\n
+            return (request.length() - bodyStart) >= contentLength;
+        }
+        
+        return false;
+    }
 
     public enum State {
         READING_REQUEST,
@@ -59,32 +107,86 @@ public class ConnectionHandler {
         requestData.append(new String(data));
         // Clear buffer for next read
         readBuffer.clear();
-        
+        return checkRequestComplete();
+        // return  false;
     }
 
-    public void write() throws IOException {
+    public boolean write() throws IOException {
         updateActivity();
-
+        
+        // If no write buffer, prepare response
         if (responseData == null) {
-            return;
+            prepareResponse();
         }
-
-        writeBuffer.clear();
+        
+        // Write as much as possible
         int remaining = responseData.length - responsePosition;
-        int toWrite = Math.min(remaining, writeBuffer.capacity());
-        writeBuffer.put(responseData, responsePosition, toWrite);
-        writeBuffer.flip();
-
-        int bytesWritten = channel.write(writeBuffer);
-        responsePosition += bytesWritten;
-
-        Logger.debug(TAG, "Wrote " + bytesWritten + " bytes to " + getRemoteAddress());
-
-        if (responsePosition >= responseData.length) {
-            // Response complete
-            Logger.debug(TAG, "Response complete for " + getRemoteAddress());
-            close();
+        if (remaining > 0) {
+            writeBuffer.clear();
+            int bytesToWrite = Math.min(remaining, writeBuffer.capacity());
+            writeBuffer.put(responseData, responsePosition, bytesToWrite);
+            writeBuffer.flip();
+            
+            int bytesWritten = channel.write(writeBuffer);
+            responsePosition += bytesWritten;
+            
+            Logger.debug(TAG, "Wrote " + bytesWritten + " bytes to " + getRemoteAddress());
         }
+        
+        // Check if write is complete
+        if (responsePosition >= responseData.length) {
+            writeComplete = true;
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Prepare HTTP response
+     */
+    private void prepareResponse() {
+        // For now, just return a simple HTTP response
+        String response = "HTTP/1.1 200 OK\r\n" +
+                         "Content-Type: text/plain\r\n" +
+                         "Content-Length: 13\r\n" +
+                         "Connection: " + (shouldKeepAlive() ? "keep-alive" : "close") + "\r\n" +
+                         "\r\n" +
+                         "Hello, World!";
+        
+        responseData = response.getBytes();
+        responsePosition = 0;
+        writeComplete = false;
+    }
+    
+    /**
+     * Should keep connection alive?
+     */
+    public boolean shouldKeepAlive() {
+        if (requestData == null) {
+            return false;
+        }
+        
+        String request = requestData.toString();
+        String[] headers = request.split("\r\n");
+        
+        // Default to HTTP/1.1 behavior (keep-alive by default)
+        boolean keepAlive = true;
+        
+        // Check Connection header
+        for (String header : headers) {
+            if (header.toLowerCase().startsWith("connection:")) {
+                String connectionValue = header.substring("connection:".length()).trim().toLowerCase();
+                if (connectionValue.equals("close")) {
+                    keepAlive = false;
+                } else if (connectionValue.equals("keep-alive")) {
+                    keepAlive = true;
+                }
+                break;
+            }
+        }
+        
+        return keepAlive;
     }
 
     private boolean isRequestComplete() {
@@ -94,7 +196,7 @@ public class ConnectionHandler {
         return data.contains("\r\n\r\n");
     }
 
-    private void processRequest() {
+    public void processRequest() {
         Logger.info(TAG, "Processing request from " + getRemoteAddress());
         Logger.debug(TAG, "Request:\n" + requestData.toString().split("\r\n\r\n")[0]);
 
@@ -138,6 +240,25 @@ public class ConnectionHandler {
 
     public State getState() {
         return state;
+    }
+    
+    public void setState(State state) {
+        this.state = state;
+    }
+    
+    public void sendErrorResponse(int statusCode, String message) {
+        String response = String.format(
+            "HTTP/1.1 %d %s\r\n" +
+            "Content-Type: text/plain\r\n" +
+            "Connection: close\r\n" +
+            "\r\n" +
+            "%d %s",
+            statusCode, message, statusCode, message
+        );
+        
+        responseData = response.getBytes();
+        responsePosition = 0;
+        writeComplete = false;
     }
 
     public String getRemoteAddress() {
