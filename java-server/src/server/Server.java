@@ -15,8 +15,8 @@ import utils.Logger;
 public class Server {
     private final ServerConfig config;
     private Selector selector;
-    private Map<Integer, ServerSocketChannel> serverChannels;
-    private Map<SocketChannel, ConnectionHandler> connection;
+    private final  Map<Integer, ServerSocketChannel> serverChannels;
+    private final Map<SocketChannel, ConnectionHandler> connection;
     private volatile boolean running;
     // timeout management
     private static final long CONNECTION_TIMEOUT_MS = 30000;
@@ -69,10 +69,13 @@ public class Server {
         selector = Selector.open();
         for (int port : config.getPorts()) {
             ServerSocketChannel channel = ServerSocketChannel.open();
+            // Configure channel for non-blocking mode 
             channel.configureBlocking(false);// no bloking
             channel.socket().bind(new InetSocketAddress(config.getHost(), port));
+            // Register channel with selector for specific operations 
+            Logger.info("Server", "Server started on port : " + port);
 
-            channel.register(selector, SelectionKey.OP_ACCEPT);
+            SelectionKey key = channel.register(selector, SelectionKey.OP_ACCEPT);
             // System.err.println("channel" + ch.toString() + " == " + sk);
             serverChannels.put(port, channel);
 
@@ -87,6 +90,7 @@ public class Server {
             // step 1
             int readySocket = selector.select(CONNECTION_TIMEOUT_MS);
             // step 2
+            if (readySocket == 0) continue;
             // some code here
 
             // step 3
@@ -99,6 +103,7 @@ public class Server {
                     continue;
                 try {
                     if (key.isAcceptable()) {
+ 
                         handleAccept(key);
                     } else if (key.isReadable()) {
                         handleRead(key);
@@ -179,6 +184,8 @@ public class Server {
             SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ);
             // Create ConnectionHandler and attach to client's key
             ConnectionHandler handler = new ConnectionHandler(client, clientKey);
+            Logger.info("Client", "New connection from: " + handler.getRemoteAddress());
+
             clientKey.attach(handler);
             connection.put(client, handler);
             lastActivityTime.put(client, System.currentTimeMillis());
