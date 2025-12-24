@@ -15,7 +15,7 @@ import utils.Logger;
 public class Server {
     private final ServerConfig config;
     private Selector selector;
-    private final  Map<Integer, ServerSocketChannel> serverChannels;
+    private final Map<Integer, ServerSocketChannel> serverChannels;
     private final Map<SocketChannel, ConnectionHandler> connection;
     private volatile boolean running;
     // timeout management
@@ -65,19 +65,20 @@ public class Server {
      */
 
     private void init() throws IOException {
-        // create server
+            // Create a selector for multiplexing I/O operations
         selector = Selector.open();
         for (int port : config.getPorts()) {
             ServerSocketChannel channel = ServerSocketChannel.open();
-            // Configure channel for non-blocking mode 
+            // Configure channel for non-blocking mode
             channel.configureBlocking(false);// no bloking
             channel.socket().bind(new InetSocketAddress(config.getHost(), port));
-            // Register channel with selector for specific operations 
+            // Register channel with selector for specific operations
             Logger.info("Server", "Server started on port : " + port);
 
             SelectionKey key = channel.register(selector, SelectionKey.OP_ACCEPT);
             // System.err.println("channel" + ch.toString() + " == " + sk);
             serverChannels.put(port, channel);
+            key.attach(channel);
 
         }
         Logger.info("Server", "Server initialized on ports: " + config.getPorts());
@@ -90,7 +91,8 @@ public class Server {
             // step 1
             int readySocket = selector.select(CONNECTION_TIMEOUT_MS);
             // step 2
-            if (readySocket == 0) continue;
+            if (readySocket == 0)
+                continue;
             // some code here
 
             // step 3
@@ -103,11 +105,14 @@ public class Server {
                     continue;
                 try {
                     if (key.isAcceptable()) {
- 
+                        System.out.println("test acceptable");
                         handleAccept(key);
                     } else if (key.isReadable()) {
+                        System.out.println("test readable");
+
                         handleRead(key);
                     } else if (key.isWritable()) {
+
                         handleWrite(key);
 
                     }
@@ -121,6 +126,7 @@ public class Server {
 
     // Handle readable channel (incoming data)
     private void handleRead(SelectionKey key) throws IOException {
+        System.out.println("Server.handleRead(**-*-*---*)");
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
         if (handler == null) {
             key.cancel();
@@ -185,6 +191,9 @@ public class Server {
             // Create ConnectionHandler and attach to client's key
             ConnectionHandler handler = new ConnectionHandler(client, clientKey);
             Logger.info("Client", "New connection from: " + handler.getRemoteAddress());
+            // Attach handler to the key for easy access
+            handler.processRequest();
+            // Logger.info("Clients", "test connection : " + config.getPorts());
 
             clientKey.attach(handler);
             connection.put(client, handler);
@@ -196,11 +205,14 @@ public class Server {
     }
 
     private void handleWrite(SelectionKey key) {
+
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
+        
         if (handler == null) {
             return;
         }
         try {
+            // System.out.println("test writable"+handler.getRemoteAddress());
             handler.write();
         } catch (IOException e) {
             Logger.error("Server", "Error writing to client", e);

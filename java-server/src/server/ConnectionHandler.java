@@ -25,15 +25,15 @@ public class ConnectionHandler {
     private int responsePosition;
     private boolean writeComplete;
 
-        private boolean checkRequestComplete() {
+    private boolean checkRequestComplete() {
         String request = requestData.toString();
-        
+
         // Check for end of headers (\r\n\r\n)
         int headerEnd = request.indexOf("\r\n\r\n");
         if (headerEnd == -1) {
             return false; // Headers not fully received yet
         }
-        
+
         // If we've already processed headers, check if we have the full body
         if (state == State.PROCESSING) {
             // For GET/HEAD/DELETE/etc. requests, no body is expected
@@ -41,11 +41,11 @@ public class ConnectionHandler {
             if (firstLine.startsWith("GET ") || firstLine.startsWith("HEAD ") || firstLine.startsWith("DELETE ")) {
                 return true;
             }
-            
+
             // For requests with body, check Content-Length
             String[] headers = request.substring(0, headerEnd).split("\r\n");
             int contentLength = 0;
-            
+
             for (String line : headers) {
                 if (line.toLowerCase().startsWith("content-length:")) {
                     try {
@@ -57,17 +57,17 @@ public class ConnectionHandler {
                     }
                 }
             }
-            
+
             // If no content length or content length is 0, request is complete
             if (contentLength <= 0) {
                 return true;
             }
-            
+
             // Check if we've received the full body
             int bodyStart = headerEnd + 4; // +4 for \r\n\r\n
             return (request.length() - bodyStart) >= contentLength;
         }
-        
+
         return false;
     }
 
@@ -108,17 +108,22 @@ public class ConnectionHandler {
         // Clear buffer for next read
         readBuffer.clear();
         return checkRequestComplete();
-        // return  false;
+        // return false;
     }
 
     public boolean write() throws IOException {
         updateActivity();
-        
+
         // If no write buffer, prepare response
+        // Create a String from the byte array using UTF-8 standard
+        // String responseString = new String(responseData, StandardCharsets.UTF_8);
+
+        // System.out.println("test ConnectionHandler.write() " + responseString);
         if (responseData == null) {
+            System.out.println("ConnectionHandler.write()");
             prepareResponse();
         }
-        
+
         // Write as much as possible
         int remaining = responseData.length - responsePosition;
         if (remaining > 0) {
@@ -126,39 +131,39 @@ public class ConnectionHandler {
             int bytesToWrite = Math.min(remaining, writeBuffer.capacity());
             writeBuffer.put(responseData, responsePosition, bytesToWrite);
             writeBuffer.flip();
-            
+
             int bytesWritten = channel.write(writeBuffer);
             responsePosition += bytesWritten;
-            
+
             Logger.debug(TAG, "Wrote " + bytesWritten + " bytes to " + getRemoteAddress());
         }
-        
+
         // Check if write is complete
         if (responsePosition >= responseData.length) {
             writeComplete = true;
             return true;
         }
-        
+
         return false;
     }
-    
+
     /**
      * Prepare HTTP response
      */
     private void prepareResponse() {
         // For now, just return a simple HTTP response
         String response = "HTTP/1.1 200 OK\r\n" +
-                         "Content-Type: text/plain\r\n" +
-                         "Content-Length: 13\r\n" +
-                         "Connection: " + (shouldKeepAlive() ? "keep-alive" : "close") + "\r\n" +
-                         "\r\n" +
-                         "Hello, World!";
-        
+                "Content-Type: text/plain\r\n" +
+                "Content-Length: 13\r\n" +
+                "Connection: " + (shouldKeepAlive() ? "keep-alive" : "close") + "\r\n" +
+                "\r\n" +
+                "Hello, World!";
+
         responseData = response.getBytes();
         responsePosition = 0;
         writeComplete = false;
     }
-    
+
     /**
      * Should keep connection alive?
      */
@@ -166,13 +171,13 @@ public class ConnectionHandler {
         if (requestData == null) {
             return false;
         }
-        
+
         String request = requestData.toString();
         String[] headers = request.split("\r\n");
-        
+
         // Default to HTTP/1.1 behavior (keep-alive by default)
         boolean keepAlive = true;
-        
+
         // Check Connection header
         for (String header : headers) {
             if (header.toLowerCase().startsWith("connection:")) {
@@ -185,7 +190,7 @@ public class ConnectionHandler {
                 break;
             }
         }
-        
+
         return keepAlive;
     }
 
@@ -202,7 +207,12 @@ public class ConnectionHandler {
 
         // Parse request and route to handlers
         // For now, send a simple response
-        String body = "<html><body><h1>Hello from LocalServer!</h1><p>Server is running.</p></body></html>";
+        String requestStr = requestData.toString();
+        String path = "/";
+
+        String body = """
+                <html><body><h1>Hello from LocalServer!</h1><p>Server is running.</p> </body></html>
+                """;
         String response = """
                 HTTP/1.1 200 OK\r
                 Content-Type: text/html\r
@@ -241,21 +251,20 @@ public class ConnectionHandler {
     public State getState() {
         return state;
     }
-    
+
     public void setState(State state) {
         this.state = state;
     }
-    
+
     public void sendErrorResponse(int statusCode, String message) {
         String response = String.format(
-            "HTTP/1.1 %d %s\r\n" +
-            "Content-Type: text/plain\r\n" +
-            "Connection: close\r\n" +
-            "\r\n" +
-            "%d %s",
-            statusCode, message, statusCode, message
-        );
-        
+                "HTTP/1.1 %d %s\r\n" +
+                        "Content-Type: text/plain\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n" +
+                        "%d %s",
+                statusCode, message, statusCode, message);
+
         responseData = response.getBytes();
         responsePosition = 0;
         writeComplete = false;
