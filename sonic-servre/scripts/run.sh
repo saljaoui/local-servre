@@ -39,8 +39,6 @@ print_sonic_logo() {
     echo -e "\033[1;38;5;51m    ███████║███████╗██║  ██║ ╚████╔╝ ███████╗██║  ██║\033[0m"
     echo -e "\033[1;38;5;87m    ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝\033[0m"
     echo ""
-    echo -e "${DIM}${WHITE}                    High-Performance Java Server${NC}"
-    echo ""
 }
 
 print_header() {
@@ -165,14 +163,13 @@ print_success "All required directories ready"
 
 echo ""
 print_heavy_separator
-print_sonic_logo
-print_heavy_separator
-echo ""
-echo -e "${BOLD}\033[1;38;5;45m    🚀 Server is now running...${NC}"
 echo ""
 echo -e "${DIM}${WHITE}       ┌──────────────────────────────────────────────────────────────────┐${NC}"
-echo -e "${DIM}${WHITE}       │${NC}  Press ${BOLD}${YELLOW}Ctrl+C${NC}${DIM} to stop the server${DIM}${WHITE}                           │${NC}"
+echo -e "${DIM}${WHITE}       │                ${NC}  Press ${BOLD}${YELLOW}Ctrl+C${NC}${DIM} to stop the server${DIM}${WHITE}                 │${NC}"
 echo -e "${DIM}${WHITE}       └──────────────────────────────────────────────────────────────────┘${NC}"
+echo ""
+print_sonic_logo
+echo -e "${BOLD}\033[1;38;5;45m    🚀 Server is now running...${NC}"
 echo ""
 print_heavy_separator
 echo ""
