@@ -41,41 +41,41 @@ public class ConnectionHandler {
             return false; // Headers not fully received yet
         }
 
-        // If we've already processed headers, check if we have the full body
-        if (state == State.PROCESSING) {
-            // For GET/HEAD/DELETE/etc. requests, no body is expected
-            String firstLine = request.split("\r\n")[0].toUpperCase();
-            if (firstLine.startsWith("GET ") || firstLine.startsWith("HEAD ") || firstLine.startsWith("DELETE ")) {
-                return true;
-            }
-
-            // For requests with body, check Content-Length
-            String[] headers = request.substring(0, headerEnd).split("\r\n");
-            int contentLength = 0;
-
-            for (String line : headers) {
-                if (line.toLowerCase().startsWith("content-length:")) {
-                    try {
-                        contentLength = Integer.parseInt(line.substring(15).trim());
-                        break;
-                    } catch (NumberFormatException e) {
-                        Logger.error(TAG, "Invalid Content-Length header", e);
-                        return true; // Invalid header, but we'll process what we have
-                    }
-                }
-            }
-
-            // If no content length or content length is 0, request is complete
-            if (contentLength <= 0) {
-                return true;
-            }
-
-            // Check if we've received the full body
-            int bodyStart = headerEnd + 4; // +4 for \r\n\r\n
-            return (request.length() - bodyStart) >= contentLength;
+        // Determine request type from the start-line
+        String startLine = "";
+        String[] lines = request.split("\r\n", 2);
+        if (lines.length > 0) {
+            startLine = lines[0].toUpperCase();
         }
 
-        return false;
+        // Requests that do not include a body are complete once headers are received
+        if (startLine.startsWith("GET ") || startLine.startsWith("HEAD ") || startLine.startsWith("DELETE ")
+                || startLine.startsWith("OPTIONS ") || startLine.startsWith("TRACE ")) {
+            return true;
+        }
+
+        // For requests that may have a body (e.g. POST, PUT), check Content-Length
+        String[] headers = request.substring(0, headerEnd).split("\r\n");
+        int contentLength = 0;
+
+        for (String line : headers) {
+            if (line.toLowerCase().startsWith("content-length:")) {
+                try {
+                    contentLength = Integer.parseInt(line.substring(15).trim());
+                    break;
+                } catch (NumberFormatException e) {
+                    Logger.error(TAG, "Invalid Content-Length header", e);
+                    return true; // treat as complete to allow processing of what we have
+                }
+            }
+        }
+
+        if (contentLength <= 0) {
+            return true; // no body expected
+        }
+
+        int bodyStart = headerEnd + 4; // +4 for \r\n\r\n
+        return (request.length() - bodyStart) >= contentLength;
     }
 
     public ConnectionHandler(SocketChannel channel, SelectionKey key) {
@@ -209,20 +209,39 @@ public class ConnectionHandler {
 
     public void processRequest() {
         Logger.info(TAG, "Processing request from " + getRemoteAddress());
-        Logger.debug(TAG, "Request:\n" + requestData.toString().split("\r\n\r\n")[0]);
+
+        // DEBUG: Print the complete request
+        System.out.println("=== DEBUG: Complete Request ===");
+        System.out.println(requestData.toString());
+        System.out.println("=== END DEBUG ===");
 
         // Parse request and route to handlers
         // For now, send a simple response
         String requestStr = requestData.toString();
-        String path = "/";
+        String path = "/"; 
+  // Extract path from request (first line: "GET /path HTTP/1.1")
+        String[] requestLines = requestStr.split("\r\n");
+        if (requestLines.length > 0) {
+            String[] requestParts = requestLines[0].split(" ");
+            if (requestParts.length > 1) {
+                path = requestParts[1];
+             }
+        }
 
-        String body = """
-                <html><body><h1>Hello from LocalServer!</h1><p>Server is running.</p> </body></html>
-                """;
+
+
+        // Create response based on path
+        String body = switch (path) {
+            case "/" -> "<html><body><h1>Hello from LocalServer!</h1><p>Server is running.</p></body></html>";
+            case "/welcome" -> "<html><body><h1>Welcome to our server!</h1></body></html>";
+            default -> "<html><body><h1>404 Not Found</h1><p>The requested path was not found: " + path
+                                    + "</p></body></html>";
+        };
+        // Create HTTP response
         String response = """
-                HTTP/1.1 200 OK\r
-                Content-Type: text/html\r
-                Content-Length: """ + body.length() + "\r\n" +
+                          HTTP/1.1 200 OK\r
+                          Content-Type: text/html\r
+                          Content-Length: """ + body.length() + "\r\n" +
                 "Connection: close\r\n" +
                 "\r\n" +
                 body;

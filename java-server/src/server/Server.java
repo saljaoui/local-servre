@@ -195,9 +195,6 @@ public class Server {
             ConnectionHandler handler = new ConnectionHandler(client, clientKey);
             Logger.info("Client", "New connection from: " + handler.getRemoteAddress());
             // Attach handler to the key for easy access
-            handler.processRequest();
-
-            // Attach handler to the key for easy access
             clientKey.attach(handler);
 
             // Store the connection and its activity time
@@ -226,7 +223,7 @@ public class Server {
             } catch (IOException ignore) {
             }
             key.cancel();
-            connection.remove(key.channel());
+            connection.remove((SocketChannel) key.channel());
         }
     }
 }
