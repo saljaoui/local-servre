@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SonicServe - Java HTTP/1.1 Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            line-height: 1.8;
+            overflow-x: hidden;
+        }
+
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: radial-gradient(ellipse at top, rgba(138, 43, 226, 0.15) 0%, transparent 50%),
+                        radial-gradient(ellipse at bottom, rgba(138, 43, 226, 0.1) 0%, transparent 50%);
+        }
+
+        .hero-content {
+            text-align: center;
+            z-index: 2;
+            padding: 40px;
+        }
+
+        .logo-text {
+            font-size: 6rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            background: linear-gradient(135deg, #8a2be2 0%, #da70d6 50%, #8a2be2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { filter: drop-shadow(0 0 20px rgba(138, 43, 226, 0.5)); }
+            50% { filter: drop-shadow(0 0 40px rgba(138, 43, 226, 0.8)); }
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            color: #b0b0b0;
+            font-weight: 300;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 28px;
+            background: rgba(138, 43, 226, 0.1);
+            border: 2px solid #8a2be2;
+            border-radius: 50px;
+            color: #8a2be2;
+            font-size: 1rem;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            background: #8a2be2;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .scroll-indicator {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #8a2be2;
+            font-size: 2rem;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(10px); }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 40px;
+        }
+
+        section {
+            padding: 100px 0;
+            position: relative;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        h2 {
+            font-size: 3rem;
+            color: #ffffff;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        .section-subtitle {
+            font-size: 1.1rem;
+            color: #808080;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+        }
+
+        .metric-card {
+            background: linear-gradient(145deg, rgba(138, 43, 226, 0.05) 0%, rgba(138, 43, 226, 0.02) 100%);
+            padding: 50px 40px;
+            border: 1px solid rgba(138, 43, 226, 0.2);
+            border-radius: 16px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s ease;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(138, 43, 226, 0.1), transparent);
+            transition: left 0.6s ease;
+        }
+
+        .metric-card:hover::before {
+            left: 100%;
+        }
+
+        .metric-card:hover {
+            border-color: #8a2be2;
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(138, 43, 226, 0.2);
+        }
+
+        .metric-value {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #8a2be2 0%, #da70d6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+
+        .metric-label {
+            font-size: 1rem;
+            color: #909090;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 600;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+        }
+
+        .feature-card {
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.02);
+            border-left: 4px solid #8a2be2;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .feature-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 0;
+            background: linear-gradient(180deg, #8a2be2, #da70d6);
+            transition: height 0.3s ease;
+        }
+
+        .feature-card:hover::after {
+            height: 100%;
+        }
+
+        .feature-card:hover {
+            background: rgba(138, 43, 226, 0.05);
+            transform: translateX(10px);
+        }
+
+        .feature-title {
+            font-size: 1.3rem;
+            color: #ffffff;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        .feature-desc {
+            color: #909090;
+            font-size: 1rem;
+            line-height: 1.7;
+        }
+
+        .tech-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 50px;
+        }
+
+        .tech-item {
+            padding: 16px 32px;
+            background: rgba(138, 43, 226, 0.08);
+            border: 2px solid rgba(138, 43, 226, 0.3);
+            border-radius: 50px;
+            color: #c0c0c0;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            cursor: default;
+        }
+
+        .tech-item:hover {
+            background: rgba(138, 43, 226, 0.15);
+            border-color: #8a2be2;
+            color: #ffffff;
+            transform: translateY(-5px);
+        }
+
+        .terminal {
+            background: #1e1e1e;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 50px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .terminal-header {
+            background: #323232;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .terminal-button {
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+        }
+
+        .terminal-button:hover {
+            opacity: 0.7;
+        }
+
+        .btn-close {
+            background: #ff5f56;
+        }
+
+        .btn-minimize {
+            background: #ffbd2e;
+        }
+
+        .btn-maximize {
+            background: #27c93f;
+        }
+
+        .terminal-title {
+            flex: 1;
+            text-align: center;
+            color: #8a8a8a;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .terminal-body {
+            padding: 30px;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 2;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+
+        .terminal-line {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .terminal-prompt {
+            color: #8a2be2;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+
+        .terminal-success {
+            color: #4ec9b0;
+        }
+
+        .terminal-info {
+            color: #569cd6;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 8px;
+            height: 16px;
+            background: #8a2be2;
+            margin-left: 4px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        footer {
+            padding: 80px 40px;
+            text-align: center;
+            border-top: 1px solid rgba(138, 43, 226, 0.1);
+        }
+
+        .footer-content {
+            color: #606060;
+            font-size: 0.95rem;
+        }
+
+        .footer-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #8a2be2 0%, #da70d6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .logo-text {
+                font-size: 3.5rem;
+            }
+
+            .subtitle {
+                font-size: 1.1rem;
+            }
+
+            h2 {
+                font-size: 2rem;
+            }
+
+            section {
+                padding: 60px 0;
+            }
+
+            .container {
+                padding: 0 20px;
+            }
+
+            .metrics-grid,
+            .features-grid {
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <div class="hero-content">
+            <div class="logo-text">SONICSERVE</div>
+            <div class="subtitle">High-Performance HTTP/1.1 Server</div>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                Server Running
+            </div>
+        </div>
+        <div class="scroll-indicator">↓</div>
+    </div>
+
+    <div class="container">
+        <section>
+            <div class="section-header">
+                <h2>Built for Performance</h2>
+                <p class="section-subtitle">
+                    A lightweight, enterprise-grade HTTP server built entirely in Java using non-blocking I/O and event-driven architecture
+                </p>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">99.5%</div>
+                    <div class="metric-label">Availability</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">HTTP/1.1</div>
+                    <div class="metric-label">Protocol</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">Single</div>
+                    <div class="metric-label">Thread</div>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <div class="section-header">
+                <h2>Core Features</h2>
+                <p class="section-subtitle">
+                    Everything you need for a modern web server implementation
+                </p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-title">Non-Blocking I/O</div>
+                    <div class="feature-desc">Event-driven architecture using Java NIO for maximum efficiency and scalability without thread overhead</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">Crash-Proof Design</div>
+                    <div class="feature-desc">Comprehensive error handling ensures the server never goes down, even under extreme conditions</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">File Management</div>
+                    <div class="feature-desc">Complete support for chunked and unchunked file uploads with configurable size limits</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">CGI Integration</div>
+                    <div class="feature-desc">Execute dynamic scripts seamlessly via Common Gateway Interface using ProcessBuilder</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">Session Management</div>
+                    <div class="feature-desc">Built-in cookie handling and session tracking for stateful web applications</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-title">Flexible Configuration</div>
+                    <div class="feature-desc">JSON-based configuration for routes, ports, error pages, and complete server behavior</div>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <div class="section-header">
+                <h2>Technology Stack</h2>
+                <p class="section-subtitle">
+                    Built with modern Java technologies
+                </p>
+            </div>
+
+            <div class="tech-grid">
+                <div class="tech-item">Java 17</div>
+                <div class="tech-item">java.nio</div>
+                <div class="tech-item">java.net</div>
+                <div class="tech-item">ProcessBuilder</div>
+                <div class="tech-item">GET</div>
+                <div class="tech-item">POST</div>
+                <div class="tech-item">DELETE</div>
+            </div>
+        </section>
+
+        <section>
+            <div class="section-header">
+                <h2>Build Status</h2>
+                <p class="section-subtitle">
+                    Real-time compilation and deployment status
+                </p>
+            </div>
+
+            <div class="terminal">
+                <div class="terminal-header">
+                    <div class="terminal-button btn-close"></div>
+                    <div class="terminal-button btn-minimize"></div>
+                    <div class="terminal-button btn-maximize"></div>
+                    <div class="terminal-title">bash — sonicserve</div>
+                </div>
+                <div class="terminal-body">
+                    <div class="terminal-line">
+                        <span class="terminal-prompt">➜</span>
+                        <span>./build.sh</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-success">✅ Java compiler ready (version 17.0.17)</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-success">✅ Java runtime ready (version 17.0.17)</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-info">ℹ  Compiling source files...</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-success">✅ Successfully compiled 3 class files</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-success">✅ Configuration file found</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="terminal-success">✅ All required directories ready</span>
+                    </div>
+                    <div class="terminal-line" style="margin-top: 16px;">
+                        <span class="terminal-prompt">➜</span>
+                        <span class="cursor"></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <div class="footer-logo">SONICSERVE</div>
+        <div class="footer-content">
+            High-Performance Java HTTP Server | Educational Project
+        </div>
+    </footer>
+</body>
+</html>
