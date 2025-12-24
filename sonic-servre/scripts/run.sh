@@ -169,7 +169,7 @@ echo -e "${DIM}${WHITE}       │                ${NC}  Press ${BOLD}${YELLOW}Ct
 echo -e "${DIM}${WHITE}       └──────────────────────────────────────────────────────────────────┘${NC}"
 echo ""
 print_sonic_logo
-echo -e "${BOLD}\033[1;38;5;45m    🚀 Server is now running...${NC}"
+echo -e "${BOLD}\033[1;38;5;45m     Server is now running...${NC}"
 echo ""
 print_heavy_separator
 echo ""
