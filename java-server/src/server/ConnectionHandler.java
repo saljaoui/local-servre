@@ -25,6 +25,13 @@ public class ConnectionHandler {
     private int responsePosition;
     private boolean writeComplete;
 
+    public enum State {
+        READING_REQUEST,
+        PROCESSING,
+        WRITING_RESPONSE,
+        CLOSED
+    }
+
     private boolean checkRequestComplete() {
         String request = requestData.toString();
 
@@ -71,13 +78,6 @@ public class ConnectionHandler {
         return false;
     }
 
-    public enum State {
-        READING_REQUEST,
-        PROCESSING,
-        WRITING_RESPONSE,
-        CLOSED
-    }
-
     public ConnectionHandler(SocketChannel channel, SelectionKey key) {
         this.channel = channel;
         this.key = key;
@@ -104,8 +104,14 @@ public class ConnectionHandler {
         // Convert bytes to string and append
         byte[] data = new byte[readBuffer.remaining()];
         readBuffer.get(data);
-        requestData.append(new String(data));
+        String receivedData = new String(data);
+        requestData.append(receivedData);
         // Clear buffer for next read
+        // DEBUG: Print the received data
+        System.out.println("=== DEBUG: Received Data ===");
+        System.out.println(receivedData);
+        System.out.println("=== END DEBUG ===");
+
         readBuffer.clear();
         return checkRequestComplete();
         // return false;

@@ -65,7 +65,7 @@ public class Server {
      */
 
     private void init() throws IOException {
-            // Create a selector for multiplexing I/O operations
+        // Create a selector for multiplexing I/O operations
         selector = Selector.open();
         for (int port : config.getPorts()) {
             ServerSocketChannel channel = ServerSocketChannel.open();
@@ -117,6 +117,8 @@ public class Server {
 
                     }
                 } catch (Exception e) {
+                    Logger.error("Server", "Error handling key: " + e.getMessage(), e);
+                    cleanupConnection(key, (SocketChannel) key.channel());
                 }
 
             }
@@ -187,15 +189,18 @@ public class Server {
                 return;
             }
             client.configureBlocking(false);
+            //
             SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ);
             // Create ConnectionHandler and attach to client's key
             ConnectionHandler handler = new ConnectionHandler(client, clientKey);
             Logger.info("Client", "New connection from: " + handler.getRemoteAddress());
             // Attach handler to the key for easy access
             handler.processRequest();
-            // Logger.info("Clients", "test connection : " + config.getPorts());
 
+            // Attach handler to the key for easy access
             clientKey.attach(handler);
+
+            // Store the connection and its activity time
             connection.put(client, handler);
             lastActivityTime.put(client, System.currentTimeMillis());
             Logger.info("Client", "New connection accepted from: " + client.getRemoteAddress());
@@ -207,7 +212,7 @@ public class Server {
     private void handleWrite(SelectionKey key) {
 
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
-        
+
         if (handler == null) {
             return;
         }
