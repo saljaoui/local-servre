@@ -2,7 +2,8 @@
   "server": {
     "host": "127.0.0.1",
     "ports": [8080, 8081],
-    "defaultPort": 8080
+    "defaultPort": 8080,
+    "timeout": 60
   },
   "content": {
     "maxClientBodySize": 1048576,
@@ -31,22 +32,18 @@
     {
       "path": "/",
       "root": "./www",
-      "methods": ["GET"]
+      "methods": ["GET", "POST"]
     },
     {
-      "path": "/api",
-      "root": "./api",
-      "methods": ["GET", "POST", "DELETE"]
-    },
-    {
-      "path": "/upload",
+      "path": "/uploads",
       "root": "./uploads",
-      "methods": ["POST"]
+      "methods": ["GET", "POST", "DELETE"],
+      "allowDirectoryListing": true
     },
     {
       "path": "/cgi-bin",
       "root": "./cgi-bin",
-      "methods": ["GET"],
+      "methods": ["GET", "POST"],
       "cgiEnabled": true
     },
     {
