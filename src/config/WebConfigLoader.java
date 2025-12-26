@@ -1,11 +1,14 @@
 package config;
-
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 
 import config.model.WebServerConfig;
 
+/**
+ * Main entry point for loading and parsing web server configuration
+ * Delegates low-level JSON parsing to JsonParser and type conversion to ValueParsers
+ */
 public class WebConfigLoader {
     
     public static WebServerConfig load(String filePath) {
@@ -27,15 +30,12 @@ public class WebConfigLoader {
         }
         
         json = json.substring(1, json.length() - 1).trim();
+        Map<String, String> sections = JsonParser.splitTopLevel(json);
         
-        Map<String, String> sections = splitTopLevel(json);
-        
-        // Parse timeouts
         if (sections.containsKey("timeouts")) {
             config.setTimeouts(parseTimeouts(sections.get("timeouts")));
         }
         
-        // Parse servers
         if (sections.containsKey("servers")) {
             config.setServers(parseServers(sections.get("servers")));
         }
@@ -47,19 +47,16 @@ public class WebConfigLoader {
         WebServerConfig.Timeouts timeouts = new WebServerConfig.Timeouts();
         json = json.substring(1, json.length() - 1).trim();
         
-        Map<String, String> fields = splitTopLevel(json);
+        Map<String, String> fields = JsonParser.splitTopLevel(json);
         
         if (fields.containsKey("headerMillis")) {
-            int value = parseInt(fields.get("headerMillis"));
-            timeouts.setHeaderMillis(value);
+            timeouts.setHeaderMillis(ValueParsers.parseInt(fields.get("headerMillis")));
         }
         if (fields.containsKey("bodyMillis")) {
-            int value = parseInt(fields.get("bodyMillis"));
-            timeouts.setBodyMillis(value);
+            timeouts.setBodyMillis(ValueParsers.parseInt(fields.get("bodyMillis")));
         }
         if (fields.containsKey("keepAliveMillis")) {
-            int value = parseInt(fields.get("keepAliveMillis"));
-            timeouts.setKeepAliveMillis(value);
+            timeouts.setKeepAliveMillis(ValueParsers.parseInt(fields.get("keepAliveMillis")));
         }
         
         return timeouts;
@@ -69,10 +66,10 @@ public class WebConfigLoader {
         List<WebServerConfig.ServerBlock> servers = new ArrayList<>();
         json = json.substring(1, json.length() - 1).trim();
         
-        List<String> serverJsons = splitArray(json);
+        List<String> serverJsons = JsonParser.splitArray(json);
         
-        for (int i = 0; i < serverJsons.size(); i++) {
-            servers.add(parseServerBlock(serverJsons.get(i)));
+        for (String serverJson : serverJsons) {
+            servers.add(parseServerBlock(serverJson));
         }
         
         return servers;
@@ -82,28 +79,25 @@ public class WebConfigLoader {
         WebServerConfig.ServerBlock server = new WebServerConfig.ServerBlock();
         json = json.substring(1, json.length() - 1).trim();
         
-        Map<String, String> fields = splitTopLevel(json);
+        Map<String, String> fields = JsonParser.splitTopLevel(json);
         
         if (fields.containsKey("name")) {
-            String name = parseString(fields.get("name"));
-            server.setName(name);
+            server.setName(ValueParsers.parseString(fields.get("name")));
         }
         if (fields.containsKey("listen")) {
             server.setListen(parseListenAddresses(fields.get("listen")));
         }
         if (fields.containsKey("serverNames")) {
-            server.setServerNames(parseStringArray(fields.get("serverNames")));
+            server.setServerNames(ValueParsers.parseStringArray(fields.get("serverNames")));
         }
         if (fields.containsKey("root")) {
-            String root = parseString(fields.get("root"));
-            server.setRoot(root);
+            server.setRoot(ValueParsers.parseString(fields.get("root")));
         }
         if (fields.containsKey("clientMaxBodyBytes")) {
-            long bytes = parseLong(fields.get("clientMaxBodyBytes"));
-            server.setClientMaxBodyBytes(bytes);
+            server.setClientMaxBodyBytes(ValueParsers.parseLong(fields.get("clientMaxBodyBytes")));
         }
         if (fields.containsKey("errorPages")) {
-            server.setErrorPages(parseStringMap(fields.get("errorPages")));
+            server.setErrorPages(ValueParsers.parseStringMap(fields.get("errorPages")));
         }
         if (fields.containsKey("routes")) {
             server.setRoutes(parseRoutes(fields.get("routes")));
@@ -116,7 +110,7 @@ public class WebConfigLoader {
         List<WebServerConfig.ListenAddress> addresses = new ArrayList<>();
         json = json.substring(1, json.length() - 1).trim();
         
-        List<String> addrJsons = splitArray(json);
+        List<String> addrJsons = JsonParser.splitArray(json);
         
         for (String addrJson : addrJsons) {
             addresses.add(parseListenAddress(addrJson));
@@ -129,19 +123,16 @@ public class WebConfigLoader {
         WebServerConfig.ListenAddress addr = new WebServerConfig.ListenAddress();
         json = json.substring(1, json.length() - 1).trim();
         
-        Map<String, String> fields = splitTopLevel(json);
+        Map<String, String> fields = JsonParser.splitTopLevel(json);
         
         if (fields.containsKey("host")) {
-            String host = parseString(fields.get("host"));
-            addr.setHost(host);
+            addr.setHost(ValueParsers.parseString(fields.get("host")));
         }
         if (fields.containsKey("port")) {
-            int port = parseInt(fields.get("port"));
-            addr.setPort(port);
+            addr.setPort(ValueParsers.parseInt(fields.get("port")));
         }
         if (fields.containsKey("default")) {
-            boolean isDefault = parseBoolean(fields.get("default"));
-            addr.setDefault(isDefault);
+            addr.setDefault(ValueParsers.parseBoolean(fields.get("default")));
         }
         
         return addr;
@@ -151,10 +142,10 @@ public class WebConfigLoader {
         List<WebServerConfig.Route> routes = new ArrayList<>();
         json = json.substring(1, json.length() - 1).trim();
         
-        List<String> routeJsons = splitArray(json);
+        List<String> routeJsons = JsonParser.splitArray(json);
         
-        for (int i = 0; i < routeJsons.size(); i++) {
-            routes.add(parseRoute(routeJsons.get(i)));
+        for (String routeJson : routeJsons) {
+            routes.add(parseRoute(routeJson));
         }
         
         return routes;
@@ -164,26 +155,22 @@ public class WebConfigLoader {
         WebServerConfig.Route route = new WebServerConfig.Route();
         json = json.substring(1, json.length() - 1).trim();
         
-        Map<String, String> fields = splitTopLevel(json);
+        Map<String, String> fields = JsonParser.splitTopLevel(json);
         
         if (fields.containsKey("path")) {
-            String path = parseString(fields.get("path"));
-            route.setPath(path);
+            route.setPath(ValueParsers.parseString(fields.get("path")));
         }
         if (fields.containsKey("methods")) {
-            route.setMethods(parseStringArray(fields.get("methods")));
+            route.setMethods(ValueParsers.parseStringArray(fields.get("methods")));
         }
         if (fields.containsKey("root")) {
-            String root = parseString(fields.get("root"));
-            route.setRoot(root);
+            route.setRoot(ValueParsers.parseString(fields.get("root")));
         }
         if (fields.containsKey("index")) {
-            String index = parseString(fields.get("index"));
-            route.setIndex(index);
+            route.setIndex(ValueParsers.parseString(fields.get("index")));
         }
         if (fields.containsKey("autoIndex")) {
-            boolean autoIndex = parseBoolean(fields.get("autoIndex"));
-            route.setAutoIndex(autoIndex);
+            route.setAutoIndex(ValueParsers.parseBoolean(fields.get("autoIndex")));
         }
         if (fields.containsKey("upload")) {
             route.setUpload(parseUpload(fields.get("upload")));
@@ -202,19 +189,16 @@ public class WebConfigLoader {
         WebServerConfig.Upload upload = new WebServerConfig.Upload();
         json = json.substring(1, json.length() - 1).trim();
         
-        Map<String, String> fields = splitTopLevel(json);
+        Map<String, String> fields = JsonParser.splitTopLevel(json);
         
         if (fields.containsKey("enabled")) {
-            boolean enabled = parseBoolean(fields.get("enabled"));
-            upload.setEnabled(enabled);
+            upload.setEnabled(ValueParsers.parseBoolean(fields.get("enabled")));
         }
         if (fields.containsKey("dir")) {
-            String dir = parseString(fields.get("dir"));
-            upload.setDir(dir);
+            upload.setDir(ValueParsers.parseString(fields.get("dir")));
         }
         if (fields.containsKey("fileField")) {
-            String fileField = parseString(fields.get("fileField"));
-            upload.setFileField(fileField);
+            upload.setFileField(ValueParsers.parseString(fields.get("fileField")));
         }
         
         return upload;
@@ -224,19 +208,16 @@ public class WebConfigLoader {
         WebServerConfig.Cgi cgi = new WebServerConfig.Cgi();
         json = json.substring(1, json.length() - 1).trim();
         
-        Map<String, String> fields = splitTopLevel(json);
+        Map<String, String> fields = JsonParser.splitTopLevel(json);
         
         if (fields.containsKey("enabled")) {
-            boolean enabled = parseBoolean(fields.get("enabled"));
-            cgi.setEnabled(enabled);
+            cgi.setEnabled(ValueParsers.parseBoolean(fields.get("enabled")));
         }
         if (fields.containsKey("binDir")) {
-            String binDir = parseString(fields.get("binDir"));
-            cgi.setBinDir(binDir);
+            cgi.setBinDir(ValueParsers.parseString(fields.get("binDir")));
         }
         if (fields.containsKey("byExtension")) {
-            Map<String, String> extensions = parseStringMap(fields.get("byExtension"));
-            cgi.setByExtension(extensions);
+            cgi.setByExtension(ValueParsers.parseStringMap(fields.get("byExtension")));
         }
         
         return cgi;
@@ -246,188 +227,15 @@ public class WebConfigLoader {
         WebServerConfig.Redirect redirect = new WebServerConfig.Redirect();
         json = json.substring(1, json.length() - 1).trim();
         
-        Map<String, String> fields = splitTopLevel(json);
+        Map<String, String> fields = JsonParser.splitTopLevel(json);
         
         if (fields.containsKey("status")) {
-            int status = parseInt(fields.get("status"));
-            redirect.setStatus(status);
+            redirect.setStatus(ValueParsers.parseInt(fields.get("status")));
         }
         if (fields.containsKey("to")) {
-            String to = parseString(fields.get("to"));
-            redirect.setTo(to);
+            redirect.setTo(ValueParsers.parseString(fields.get("to")));
         }
         
         return redirect;
-    }
-    
-    // ========== CORE JSON PARSING HELPERS ==========
-    
-    private static Map<String, String> splitTopLevel(String json) {
-        Map<String, String> result = new HashMap<>();
-        int i = 0;
-        int pairCount = 0;
-        
-        while (i < json.length()) {
-            // Skip whitespace
-            while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-            if (i >= json.length()) break;
-            
-            // Read key
-            if (json.charAt(i) != '"') break;
-            i++; // skip opening quote
-            int keyStart = i;
-            while (i < json.length() && json.charAt(i) != '"') i++;
-            String key = json.substring(keyStart, i);
-            i++; // skip closing quote
-            
-            
-            // Skip to colon
-            while (i < json.length() && json.charAt(i) != ':') i++;
-            i++; // skip colon
-            
-            // Skip whitespace
-            while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-            
-            // Read value
-            int valueStart = i;
-            i = skipValue(json, i);
-            String value = json.substring(valueStart, i).trim();
-            
-            result.put(key, value);
-            pairCount++;
-            
-            // Skip comma
-            while (i < json.length() && (Character.isWhitespace(json.charAt(i)) || json.charAt(i) == ',')) i++;
-        }
-        
-        return result;
-    }
-    
-    private static int skipValue(String json, int start) {
-        char c = json.charAt(start);
-        
-        if (c == '{') {
-            return skipObject(json, start);
-        } else if (c == '[') {
-            return skipArray(json, start);
-        } else if (c == '"') {
-            return skipString(json, start);
-        } else {
-            // Number, boolean, or null
-            int i = start;
-            while (i < json.length() && json.charAt(i) != ',' && 
-                   json.charAt(i) != '}' && json.charAt(i) != ']') {
-                i++;
-            }
-            return i;
-        }
-    }
-    
-    private static int skipObject(String json, int start) {
-        int i = start + 1; // skip opening brace
-        int depth = 1;
-        
-        while (i < json.length() && depth > 0) {
-            char c = json.charAt(i);
-            if (c == '{') depth++;
-            else if (c == '}') depth--;
-            else if (c == '"') i = skipString(json, i) - 1;
-            i++;
-        }
-        return i;
-    }
-    
-    private static int skipArray(String json, int start) {
-        int i = start + 1; // skip opening bracket
-        int depth = 1;
-        
-        while (i < json.length() && depth > 0) {
-            char c = json.charAt(i);
-            if (c == '[') depth++;
-            else if (c == ']') depth--;
-            else if (c == '"') i = skipString(json, i) - 1;
-            else if (c == '{') i = skipObject(json, i) - 1;
-            i++;
-        }
-        return i;
-    }
-    
-    private static int skipString(String json, int start) {
-        int i = start + 1; // skip opening quote
-        while (i < json.length()) {
-            if (json.charAt(i) == '"' && json.charAt(i - 1) != '\\') {
-                return i + 1;
-            }
-            i++;
-        }
-        return i;
-    }
-    
-    private static List<String> splitArray(String json) {
-        List<String> items = new ArrayList<>();
-        int i = 0;
-        
-        while (i < json.length()) {
-            while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-            if (i >= json.length()) break;
-            
-            int start = i;
-            i = skipValue(json, i);
-            items.add(json.substring(start, i).trim());
-            
-            while (i < json.length() && (Character.isWhitespace(json.charAt(i)) || json.charAt(i) == ',')) i++;
-        }
-        
-        return items;
-    }
-    
-    // ========== VALUE PARSERS ==========
-    
-    private static Map<String, String> parseStringMap(String json) {
-        Map<String, String> map = new HashMap<>();
-        json = json.substring(1, json.length() - 1).trim();
-        
-        Map<String, String> fields = splitTopLevel(json);
-        
-        for (Map.Entry<String, String> entry : fields.entrySet()) {
-            String value = parseString(entry.getValue());
-            map.put(entry.getKey(), value);
-        }
-        
-        return map;
-    }
-    
-    private static List<String> parseStringArray(String json) {
-        List<String> list = new ArrayList<>();
-        json = json.substring(1, json.length() - 1).trim();
-        
-        List<String> items = splitArray(json);
-        
-        for (String item : items) {
-            String parsed = parseString(item);
-            list.add(parsed);
-        }
-        
-        return list;
-    }
-    
-    private static String parseString(String json) {
-        json = json.trim();
-        if (json.startsWith("\"") && json.endsWith("\"")) {
-            return json.substring(1, json.length() - 1);
-        }
-        return json;
-    }
-    
-    private static int parseInt(String json) {
-        return Integer.parseInt(json.trim());
-    }
-    
-    private static long parseLong(String json) {
-        return Long.parseLong(json.trim());
-    }
-    
-    private static boolean parseBoolean(String json) {
-        return Boolean.parseBoolean(json.trim());
     }
 }
