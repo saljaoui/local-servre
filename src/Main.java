@@ -1,9 +1,9 @@
-import config.ConfigParser;
-import config.model.AppConfig;
+import config.WebConfigLoader;
+import config.model.WebServerConfig;
 
 public class Main {
     public static void main(String[] args) {
-        AppConfig objectConfig = ConfigParser.parseConfig();
-        System.out.println(objectConfig.getPort());
+        WebServerConfig objectConfig = WebConfigLoader.load("./config/config.json");
+        System.out.println(objectConfig);
     }
 }
