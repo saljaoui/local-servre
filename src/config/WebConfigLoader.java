@@ -10,10 +10,11 @@ import config.model.WebServerConfig;
  * Delegates low-level JSON parsing to JsonParser and type conversion to ValueParsers
  */
 public class WebConfigLoader {
-    
-    public static WebServerConfig load(String filePath) {
+    private static final String FILE_PATH = "./config/config.json";
+
+    public static WebServerConfig load() {
         try {            
-            String content = Files.readString(Path.of(filePath));            
+            String content = Files.readString(Path.of(FILE_PATH));            
             return parseConfig(content);
         } catch (IOException e) {
             e.printStackTrace();
