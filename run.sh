@@ -8,7 +8,7 @@
 
 # Change to project root
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR/.." || exit 1
+cd "$SCRIPT_DIR" || exit 1
 
 
 # Colors
@@ -136,14 +136,8 @@ print_success "Build directory created"
 
 
 print_info "Compiling source files..."
-COMPILE_OUTPUT=$(javac -d build \
-    src/config/*.java \
-    src/utils/*.java \
-    src/request/*.java \
-    src/response/*.java \
-    src/cgi/*.java \
-    src/server/*.java \
-    src/Main.java 2>&1)
+SOURCE_FILES=$(find src -name "*.java")
+COMPILE_OUTPUT=$(javac -d build ${SOURCE_FILES} 2>&1)
 
 
 if [ $? -ne 0 ]; then
@@ -197,6 +191,9 @@ echo -e "${BOLD}\033[1;38;5;45m     Server is now running...${NC}"
 echo ""
 print_heavy_separator
 echo ""
+
+# Launch the server
+java -cp build Main "$@"
 
 
 java -cp build Main
