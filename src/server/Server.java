@@ -51,7 +51,7 @@ public class Server {
                         String response = "HTTP/1.1 200 OK\r\n" +
                                 "Content-Length: 5\r\n" +
                                 "\r\n" +
-                                "Hello";
+                                "Hello omar & simo from soufian";
 
                         client.write(ByteBuffer.wrap(response.getBytes()));
                         client.close();
