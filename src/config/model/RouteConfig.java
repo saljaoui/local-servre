@@ -32,4 +32,11 @@ public final class RouteConfig {
     public UploadConfig getUpload() { return upload; }
     public CgiConfig getCgi() { return cgi; }
     public RedirectConfig getRedirect() { return redirect; }
+
+    @Override
+    public String toString() {
+        return "RouteConfig{path='" + path + "', methods=" + methods + ", root='" + root
+                + "', index='" + index + "', autoIndex=" + autoIndex + ", upload=" + upload
+                + ", cgi=" + cgi + ", redirect=" + redirect + "}";
+    }
 }

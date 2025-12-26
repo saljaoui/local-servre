@@ -11,4 +11,9 @@ public final class RedirectConfig {
 
     public int getStatus() { return status; }
     public String getTo() { return to; }
+
+    @Override
+    public String toString() {
+        return "RedirectConfig{status=" + status + ", to='" + to + "'}";
+    }
 }

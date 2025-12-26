@@ -14,4 +14,9 @@ public final class UploadConfig {
     public boolean isEnabled() { return enabled; }
     public String getDir() { return dir; }
     public String getFileField() { return fileField; }
+
+    @Override
+    public String toString() {
+        return "UploadConfig{enabled=" + enabled + ", dir='" + dir + "', fileField='" + fileField + "'}";
+    }
 }

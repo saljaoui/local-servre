@@ -27,4 +27,9 @@ public final class AppConfig {
         if (s == null) throw new IllegalStateException("No servers configured");
         return s.getDefaultPort();
     }
+
+    @Override
+    public String toString() {
+        return "AppConfig{timeouts=" + timeouts + ", servers=" + servers + "}";
+    }
 }

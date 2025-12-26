@@ -12,4 +12,10 @@ public final class Timeouts {
     public long getHeaderMillis() { return headerMillis; }
     public long getBodyMillis() { return bodyMillis; }
     public long getKeepAliveMillis() { return keepAliveMillis; }
+
+    @Override
+    public String toString() {
+        return "Timeouts{headerMillis=" + headerMillis + ", bodyMillis=" + bodyMillis
+                + ", keepAliveMillis=" + keepAliveMillis + "}";
+    }
 }

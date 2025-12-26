@@ -16,4 +16,9 @@ public final class CgiConfig {
     public boolean isEnabled() { return enabled; }
     public String getBinDir() { return binDir; }
     public Map<String, String> getByExtension() { return byExtension; }
+
+    @Override
+    public String toString() {
+        return "CgiConfig{enabled=" + enabled + ", binDir='" + binDir + "', byExtension=" + byExtension + "}";
+    }
 }

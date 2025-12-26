@@ -14,4 +14,9 @@ public final class Listen {
     public String getHost() { return host; }
     public int getPort() { return port; }
     public boolean isDefault() { return isDefault; }
+
+    @Override
+    public String toString() {
+        return "Listen{host='" + host + "', port=" + port + ", isDefault=" + isDefault + "}";
+    }
 }

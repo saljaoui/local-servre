@@ -35,4 +35,11 @@ public final class ServerConfig {
         for (Listen l : listen) if (l.isDefault()) return l.getPort();
         return listen.isEmpty() ? -1 : listen.get(0).getPort();
     }
+
+    @Override
+    public String toString() {
+        return "ServerConfig{name='" + name + "', listen=" + listen + ", serverNames=" + serverNames
+                + ", root='" + root + "', clientMaxBodyBytes=" + clientMaxBodyBytes
+                + ", errorPages=" + errorPages + ", routes=" + routes + "}";
+    }
 }
