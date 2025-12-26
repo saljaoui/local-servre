@@ -100,7 +100,7 @@ print_header
 
 
 # Step 1: Check Dependencies
-print_step "1" "4" "Checking Dependencies"
+print_step "1" "3" "Checking Dependencies"
 
 
 if ! command -v javac &> /dev/null; then
@@ -121,42 +121,10 @@ JAVA_VERSION=$(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}')
 print_success "Java runtime ready (version ${JAVA_VERSION})"
 
 
-# Step 2: Check Gson Library
-print_step "2" "4" "Checking Gson Library"
+# Step 2: Clean and Build
+print_step "2" "3" "Building Project"
 
 
-if [ ! -d "lib" ]; then
-    mkdir -p lib
-    print_info "Created lib/ directory"
-fi
-
-
-GSON_JAR=$(ls lib/gson-*.jar 2>/dev/null | head -n 1)
-
-if [ -z "$GSON_JAR" ]; then
-    print_info "Downloading Gson automatically..."
-    
-    wget -q https://repo1.maven.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar -O lib/gson-2.10.1.jar 2>/dev/null
-    
-    if [ -f "lib/gson-2.10.1.jar" ]; then
-        print_success "Gson library downloaded successfully!"
-        GSON_JAR="lib/gson-2.10.1.jar"
-    else
-        print_error "Failed to download Gson library"
-        print_info "Manual download: https://repo1.maven.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar"
-        print_info "Or visit: https://github.com/google/gson/releases"
-        exit 1
-    fi
-else
-    print_success "Gson library found: $(basename $GSON_JAR)"
-fi
-
-
-# Step 3: Clean and Build
-print_step "3" "4" "Building Project"
-
-
-# Clean previous build
 if [ -d "build" ]; then
     rm -rf build
     print_info "Cleaned previous build"
@@ -167,9 +135,8 @@ mkdir -p build
 print_success "Build directory created"
 
 
-# Compile all phases with Gson in classpath
-print_info "Compiling source files with Gson support..."
-COMPILE_OUTPUT=$(javac -cp "$GSON_JAR" -d build \
+print_info "Compiling source files..."
+COMPILE_OUTPUT=$(javac -d build \
     src/config/*.java \
     src/utils/*.java \
     src/request/*.java \
@@ -187,13 +154,12 @@ if [ $? -ne 0 ]; then
 fi
 
 
-# Count compiled files
 COMPILED_COUNT=$(find build -name "*.class" | wc -l)
 print_success "Successfully compiled ${COMPILED_COUNT} class files"
 
 
-# Step 4: Verify Environment
-print_step "4" "4" "Verifying Environment"
+# Step 3: Verify Environment
+print_step "3" "3" "Verifying Environment"
 
 
 if [ ! -f "config/config.json" ]; then
@@ -204,7 +170,6 @@ fi
 print_success "Configuration file found"
 
 
-# Create necessary directories
 DIRS=("cgi-bin" "error_pages" "www" "uploads")
 for dir in "${DIRS[@]}"; do
     if [ ! -d "$dir" ]; then
@@ -234,8 +199,7 @@ print_heavy_separator
 echo ""
 
 
-# Run the server with Gson in classpath
-java -cp "build:$GSON_JAR" Main
+java -cp build Main
 SERVER_EXIT_CODE=$?
 
 
