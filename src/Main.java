@@ -5,7 +5,7 @@ import config.model.WebServerConfig;
 import server.Server;
 
 public class Main {
-    public static void main(String[] args) {
+    public static void main(String[] args)  {
 
         WebServerConfig config = WebConfigLoader.load();
         config.validate();
