@@ -16,9 +16,14 @@ public class WebConfigLoader {
             String content = Files.readString(Path.of(FILE_PATH));  
             WebServerConfig config = parseConfig(content);
             config.validate();
-            return config;
+            return parseConfig(content);
         } catch (IOException e) {
             e.printStackTrace();
+            System.exit(1);
+            return null;
+        } catch (IllegalArgumentException e) {
+            System.err.println("Invalid configuration: " + e.getMessage());
+            System.exit(1);
             return null;
         }
     }

@@ -9,6 +9,5 @@ public class Main {
 
         Server server = new Server(config);
         server.start();
-
     }
 }
