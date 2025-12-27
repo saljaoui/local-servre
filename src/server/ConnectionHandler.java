@@ -1,12 +1,17 @@
 package server;
 
+import config.model.WebServerConfig;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import utils.Logger;
 
 public class ConnectionHandler {
+
     private static final String TAG = "Connection";
     private static final int BUFFER_SIZE = 8192;
 
@@ -122,7 +127,6 @@ public class ConnectionHandler {
         // If no write buffer, prepare response
         // Create a String from the byte array using UTF-8 standard
         // String responseString = new String(responseData, StandardCharsets.UTF_8);
-
         // System.out.println("test ConnectionHandler.write() " + responseString);
         if (responseData == null) {
             System.out.println("ConnectionHandler.write()");
@@ -157,12 +161,12 @@ public class ConnectionHandler {
      */
     private void prepareResponse() {
         // For now, just return a simple HTTP response
-        String response = "HTTP/1.1 200 OK\r\n" +
-                "Content-Type: text/plain\r\n" +
-                "Content-Length: 13\r\n" +
-                "Connection: " + (shouldKeepAlive() ? "keep-alive" : "close") + "\r\n" +
-                "\r\n" +
-                "Hello, World!";
+        String response = "HTTP/1.1 200 OK\r\n"
+                + "Content-Type: text/plain\r\n"
+                + "Content-Length: 13\r\n"
+                + "Connection: " + (shouldKeepAlive() ? "keep-alive" : "close") + "\r\n"
+                + "\r\n"
+                + "Hello, World!";
 
         responseData = response.getBytes();
         responsePosition = 0;
@@ -208,7 +212,10 @@ public class ConnectionHandler {
 
     public void processRequest() {
         Logger.info(TAG, "Processing request from " + getRemoteAddress());
-
+        WebServerConfig.ServerBlock serverBlock = (WebServerConfig.ServerBlock) key.attachment();
+        if (serverBlock == null) {
+            sendErrorResponse(500, "Server configuration missing");
+        }
         // DEBUG: Print the complete request
         System.out.println("=== DEBUG: Complete Request ===");
         System.out.println(requestData.toString());
@@ -217,40 +224,121 @@ public class ConnectionHandler {
         // Parse request and route to handlers
         // For now, send a simple response
         String requestStr = requestData.toString();
-        String path = "/"; 
-  // Extract path from request (first line: "GET /path HTTP/1.1")
+        String path = "/";
+        String method = "GET";
+
+        // Extract path from request (first line: "GET /path HTTP/1.1")
         String[] requestLines = requestStr.split("\r\n");
         if (requestLines.length > 0) {
             String[] requestParts = requestLines[0].split(" ");
             if (requestParts.length > 1) {
                 path = requestParts[1];
-             }
+            }
+        }
+        var route = serverBlock.findRoute(path);
+        if (route != null) {
+            sendErrorResponse(404, "Not Found");
+            return;
         }
 
+        if (!route.isMethodAllowed(method)) {
+            sendErrorResponse(405, "Method Not Allowed");
+            return;
+        }
 
+        if (route.isRedirect()) {
+            sendRedirect(route.getRedirect().getStatus(), route.getRedirect().getTo());
+            return;
+        }
+        try {
+            // Determine which folder to use. 
+            // Use route.root if defined, otherwise fallback to server.root
+            String rootFolder = (route.getRoot() != null) ? route.getRoot() : serverBlock.getRoot();
 
+            // Resolve the full file path
+            // Note: This handles the '/' vs '/index.html' logic inside
+            Path filePath = resolveFilePath(rootFolder, path, route.getIndex());
+
+            if (filePath == null || !Files.exists(filePath) || Files.isDirectory(filePath)) {
+                // File not found
+
+                // Check if AutoIndex is ON (listing files in folder)
+                if (route.isAutoIndex() && filePath != null && Files.isDirectory(filePath)) {
+                    // TODO: Implement generateDirectoryListing(filePath)
+                    sendErrorResponse(200, "Auto-indexing not implemented yet for: " + path);
+                } else {
+                    sendErrorResponse(404, "Not Found");
+                }
+                return;
+            }
+
+            // Read file and send
+            byte[] fileContent = Files.readAllBytes(filePath);
+            String contentType = getContentType(filePath);
+
+            sendResponse(200, contentType, fileContent);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            sendErrorResponse(500, "Internal Server Error");
+        }
         // Create response based on path
-        String body = switch (path) {
-            case "/" -> "<html><body><h1>Hello from LocalServer!</h1><p>Server is running.</p></body></html>";
-            case "/welcome" -> "<html><body><h1>Welcome to our server!</h1></body></html>";
-            default -> "<html><body><h1>404 Not Found</h1><p>The requested path was not found: " + path
-                                    + "</p></body></html>";
-        };
-        // Create HTTP response
-        String response = """
-                          HTTP/1.1 200 OK\r
-                          Content-Type: text/html\r
-                          Content-Length: """ + body.length() + "\r\n" +
-                "Connection: close\r\n" +
-                "\r\n" +
-                body;
 
-        responseData = response.getBytes();
-        responsePosition = 0;
+    }
+// Reuse the Content-Type helper from before
+
+    private String getContentType(Path filePath) {
+        String fileName = filePath.getFileName().toString();
+        if (fileName.endsWith(".html") || fileName.endsWith(".htm")) {
+            return "text/html";
+        }
+        if (fileName.endsWith(".css")) {
+            return "text/css";
+        }
+        if (fileName.endsWith(".js")) {
+            return "application/javascript";
+        }
+        if (fileName.endsWith(".jpg")) {
+            return "image/jpeg";
+        }
+        if (fileName.endsWith(".png")) {
+            return "image/png";
+        }
+        return "text/plain";
+    }
+
+    private void sendResponse(int status, String contentType, byte[] body) {
+        String header = "HTTP/1.1 " + status + " OK\r\n"
+                + "Content-Type: " + contentType + "\r\n"
+                + "Content-Length: " + body.length + "\r\n"
+                + "Connection: close\r\n"
+                + "\r\n";
+
+        responseData = new byte[header.length() + body.length];
+        System.arraycopy(header.getBytes(), 0, responseData, 0, header.length());
+        System.arraycopy(body, 0, responseData, header.length(), body.length);
+
         state = State.WRITING_RESPONSE;
-
-        // Change interest to write
         key.interestOps(SelectionKey.OP_WRITE);
+    }
+
+    private Path resolveFilePath(String root, String path, String indexFile) {
+        try {
+            // If user asks for "/", append the index file from config (e.g. "index.html")
+            if (path.endsWith("/")) {
+                path = path + indexFile;
+            }
+
+            Path resolved = Paths.get(root, path).normalize();
+
+            // Security: Ensure we don't go outside the root folder (e.g. ../../)
+            if (!resolved.startsWith(Paths.get(root).normalize())) {
+                return null;
+            }
+            return resolved;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public void close() {
@@ -281,17 +369,30 @@ public class ConnectionHandler {
     }
 
     public void sendErrorResponse(int statusCode, String message) {
-        String response = String.format(
-                "HTTP/1.1 %d %s\r\n" +
-                        "Content-Type: text/plain\r\n" +
-                        "Connection: close\r\n" +
-                        "\r\n" +
-                        "%d %s",
+        String response = String.format("""
+                                        HTTP/1.1 %d %s\r
+                                        Content-Type: text/plain\r
+                                        Connection: close\r
+                                        \r
+                                        %d %s""",
                 statusCode, message, statusCode, message);
 
         responseData = response.getBytes();
         responsePosition = 0;
         writeComplete = false;
+    }
+
+    private void sendRedirect(int status, String location) {
+        String body = "<h1>Redirecting to " + location + "</h1>";
+        String header = "HTTP/1.1 " + status + " Moved Permanently\r\n"
+                + "Location: " + location + "\r\n"
+                + "Content-Length: " + body.length() + "\r\n"
+                + "Connection: close\r\n"
+                + "\r\n" + body;
+
+        responseData = header.getBytes();
+        state = State.WRITING_RESPONSE;
+        key.interestOps(SelectionKey.OP_WRITE);
     }
 
     public String getRemoteAddress() {
