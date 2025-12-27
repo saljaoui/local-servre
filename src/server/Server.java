@@ -10,6 +10,7 @@ import java.nio.channels.SocketChannel;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import utils.Logger;
 
 public class Server {
 
@@ -52,17 +53,7 @@ public class Server {
                     SelectionKey key = it.next();
                     it.remove();
                     if (key.isAcceptable()) {
-                        if (key.channel() instanceof ServerSocketChannel serverChannel) {
-                            SocketChannel client = serverChannel.accept();
-                            // here we can check for null because in non-blocking mode, accept() returns
-                            if (client == null) {
-                                continue;
-                            }
-                            client.configureBlocking(false);
-                            client.register(selector, SelectionKey.OP_READ);
-                            // null if no connection is available
-                        }
-                        // handleAccept(key);
+                        handleAccept(key);
                     } else if (key.isReadable()) {
 
                         // SocketChannel client = (SocketChannel) key.channel();
@@ -81,7 +72,7 @@ public class Server {
                 }
             }
         } catch (IOException e) {
-
+            e.printStackTrace();
         }
     }
 
@@ -99,9 +90,10 @@ public class Server {
                 // Register the client channel with the selector for read operations
                 // get server config attached to server socket key
                 var srv = (config.model.WebServerConfig.ServerBlock) key.attachment();
-                Connection conn = new Connection();
-                conn.serverBlock = srv;
-                clientChannel.register(selector, SelectionKey.OP_READ, conn);
+                // register client and attach a ConnectionHandler to manage I/O
+                SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
+                ConnectionHandler handler = new ConnectionHandler(clientChannel, clientKey);
+                clientKey.attach(handler);
                 // Create ConnectionHandler and attach to client's key
             } catch (IOException e) {
                 e.printStackTrace();
@@ -109,24 +101,56 @@ public class Server {
         }
     }
 
-    private void handleRead(SelectionKey key) {
+    private void handleRead(SelectionKey key) throws IOException {
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
-        SocketChannel client = (SocketChannel) key.channel();
-        try {
-
-        } catch (Exception e) {
+        if (handler == null) {
+            key.cancel();
+            return;
         }
-        System.out.println("Server.handleRead()");
+
+        SocketChannel channel = (SocketChannel) key.channel();
+        try {
+            boolean readComplete = handler.read();
+            if (readComplete) {
+                handler.setState(ConnectionHandler.State.PROCESSING);
+
+                try {
+                    // Process the request
+                    handler.processRequest();
+
+                    // Change interest to write so selector will notify when writable
+                    key.interestOps(SelectionKey.OP_WRITE);
+                } catch (Exception e) {
+                    Logger.error("Server", "Error processing request: " + e.getMessage(), e);
+                    handler.sendErrorResponse(500, "Internal Server Error");
+                    key.interestOps(SelectionKey.OP_WRITE);
+                }
+            }
+
+        } catch (IOException e) {
+            Logger.debug("Server", "Client disconnected: " + e.getMessage());
+            try {
+                channel.close();
+            } catch (IOException ignore) {
+            }
+            key.cancel();
+        }
     }
 
     private void handleWrite(SelectionKey key) {
-        throw new UnsupportedOperationException("Not supported yet.");
+        ConnectionHandler handler = (ConnectionHandler) key.attachment();
+        if (handler == null) {
+            key.cancel();
+            return;
+        }
+        try {
+            boolean finished = handler.write();
+            if (finished) {
+                handler.close();
+            }
+        } catch (IOException e) {
+            try { handler.close(); } catch (Exception ignore) {}
+        }
     }
-
-    private static class Connection {
-
-        java.nio.ByteBuffer readBuf = java.nio.ByteBuffer.allocate(8192);
-        java.nio.ByteBuffer writeBuf;
-        config.model.WebServerConfig.ServerBlock serverBlock;
-    }
+    
 }
