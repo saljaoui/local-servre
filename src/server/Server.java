@@ -1,5 +1,6 @@
 package server;
 
+import config.model.WebServerConfig;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -7,9 +8,9 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
 import java.util.Iterator;
-
-import config.model.WebServerConfig;
+import java.util.List;
 
 public class Server {
 
@@ -23,18 +24,22 @@ public class Server {
         try {
 
             Selector selector = Selector.open();
-            ServerSocketChannel channel = ServerSocketChannel.open();
-            channel.configureBlocking(false);
 
-            InetSocketAddress address = new InetSocketAddress(
-                    config.getServers().get(0).getDefaultListen().getHost(),
-                    config.getServers().get(0).getDefaultListen().getPort());
+            List<ServerSocketChannel> serverChannels = new ArrayList<>();
+            for (WebServerConfig.ServerBlock serverBlock : config.getServers()) {
+                for (WebServerConfig.ListenAddress addr : serverBlock.getListen()) {
+                    ServerSocketChannel channel = ServerSocketChannel.open();
+                    channel.configureBlocking(false);
+                    channel.bind(new InetSocketAddress(addr.getHost(), addr.getPort()));
+                    // attach server block so accept path knows which logical server this channel belongs to
+                    channel.register(selector, SelectionKey.OP_ACCEPT, serverBlock);
+                    serverChannels.add(channel);
+                                System.out.println("Server running on http://"
+                    + addr.getHost() + ":" + addr.getPort());
+                }
+            }
 
-            channel.bind(address);
-            channel.register(selector, SelectionKey.OP_ACCEPT);
 
-            System.out.println("Server running on http://"
-                    + address.getHostString() + ":" + address.getPort());
 
             while (true) {
                 selector.select(); // wait for events
@@ -46,9 +51,10 @@ public class Server {
                     it.remove();
 
                     if (key.isAcceptable()) {
-                        SocketChannel client = channel.accept();
+                        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
+                        SocketChannel client = serverChannel.accept();
                         client.configureBlocking(false);
-                        client.register(selector, SelectionKey.OP_READ);
+                        client.register(selector, SelectionKey.OP_READ, key.attachment());
                     } else if (key.isReadable()) {
                         SocketChannel client = (SocketChannel) key.channel();
 
