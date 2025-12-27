@@ -6,7 +6,6 @@ public class Main {
     public static void main(String[] args)  {
 
         WebServerConfig config = WebConfigLoader.load();
-        config.validate();
 
         Server server = new Server(config);
         server.start();
