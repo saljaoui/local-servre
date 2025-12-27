@@ -20,24 +20,31 @@ public class Server {
     }
 
     public void start() {
-
         try {
+
             Selector selector = Selector.open();
-
             ServerSocketChannel channel = ServerSocketChannel.open();
-
-            channel.bind(new InetSocketAddress(config.getServers().get(0).getDefaultListen().getPort()));
             channel.configureBlocking(false);
+
+            InetSocketAddress address = new InetSocketAddress(
+                    config.getServers().get(0).getDefaultListen().getHost(),
+                    config.getServers().get(0).getDefaultListen().getPort());
+
+            channel.bind(address);
             channel.register(selector, SelectionKey.OP_ACCEPT);
 
-            System.out.println("Server running on http://localhost:" + "8080");
+            System.out.println("Server running on http://"
+                    + address.getHostString() + ":" + address.getPort());
+
             while (true) {
                 selector.select(); // wait for events
+
                 Iterator<SelectionKey> it = selector.selectedKeys().iterator();
 
                 while (it.hasNext()) {
                     SelectionKey key = it.next();
                     it.remove();
+
                     if (key.isAcceptable()) {
                         SocketChannel client = channel.accept();
                         client.configureBlocking(false);
@@ -46,12 +53,33 @@ public class Server {
                         SocketChannel client = (SocketChannel) key.channel();
 
                         ByteBuffer buffer = ByteBuffer.allocate(1024);
-                        client.read(buffer);
+
+                        int bytesRead = client.read(buffer);
+
+                        // if does NOT guarantee full request
+                        if (bytesRead == -1) {
+                            client.close();
+                            return;
+                        }
+
+                        buffer.flip(); // flip buffer to read mode
+
+                        byte[] data = new byte[buffer.remaining()]; // create array for received data
+                        buffer.get(data); // copy bytes from buffer
+                        
+                                          // print what client sent
+                        System.out.println("----- REQUEST -----");
+                        System.out.println(new String(data));
+                        System.out.println("-------------------");
+
+                        String body = "Hello omar & simo from soufian";
 
                         String response = "HTTP/1.1 200 OK\r\n" +
-                                "Content-Length: 5\r\n" +
+                                "Content-Type: text/plain; charset=UTF-8\r\n" +
+                                "Content-Length: " + body.getBytes().length + "\r\n" +
+                                "Connection: close\r\n" +
                                 "\r\n" +
-                                "Hello omar & simo from soufian";
+                                body;
 
                         client.write(ByteBuffer.wrap(response.getBytes()));
                         client.close();
@@ -59,7 +87,7 @@ public class Server {
                 }
             }
         } catch (IOException e) {
-
+            e.printStackTrace();
         }
     }
 }
