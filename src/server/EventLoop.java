@@ -8,7 +8,7 @@ import java.util.Iterator;
 public class EventLoop {
 
     // The main selector loop
-    public static void loop(Selector selector, ServerSocketChannel serverChannel) throws IOException {
+    public static void loop(Selector selector) throws IOException {
 
         while (true) {
             selector.select(); // wait for events (blocking)
@@ -21,6 +21,7 @@ public class EventLoop {
 
                 // 1️⃣ Accept new client connections
                 if (key.isAcceptable()) {
+                    ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
                     SocketChannel client = serverChannel.accept(); // accept the client
                     client.configureBlocking(false); // non-blocking
                     client.register(selector, SelectionKey.OP_READ); // watch client for READ events
