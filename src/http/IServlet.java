@@ -11,4 +11,8 @@ public interface IServlet {
 
     // The specific path this servlet handles (e.g., "/", "/upload")
     String getPath();
+
+    void doPut(HttpRequest request, HttpResponse response) throws IOException;
+
+    void doDelete(HttpRequest request, HttpResponse response) throws IOException;
 }

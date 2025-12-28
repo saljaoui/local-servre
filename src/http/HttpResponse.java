@@ -1,63 +1,57 @@
 package http;
 
-import java.util.LinkedHashMap;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 
 public class HttpResponse {
-	private int statusCode = 200;
-	private String reasonPhrase = "OK";
-	private final Map<String, String> headers = new LinkedHashMap<>();
-	private byte[] body;
+    private int status = 200;
+    private String statusMessage = "OK";
+    private Map<String, String> headers = new HashMap<>();
+    private final ByteArrayOutputStream bodyStream = new ByteArrayOutputStream();
+
+    public HttpResponse() {
+        headers.put("Connection", "close"); // Default for simplicity
+    }
+
+    public void setStatus(int code) { this.status = code; }
+    public void setStatusMessage(String msg) { this.statusMessage = msg; }
     
-	public HttpResponse() {
-		headers.put("Server", "SonicServer");
-	}
+    public void setContentType(String type) { 
+        headers.put("Content-Type", type); 
+    }
 
-	public int getStatusCode() {
-		return statusCode;
-	}
+    // Helper to write content easily
+    public void write(String content) {
+        bodyStream.write(content.getBytes(StandardCharsets.UTF_8), 0, content.length());
+    }
+    
+    public void write(byte[] content) {
+        try { bodyStream.write(content); } catch (Exception e) {}
+    }
 
-	public void setStatus(int statusCode, String reasonPhrase) {
-		this.statusCode = statusCode;
-		this.reasonPhrase = reasonPhrase;
-	}
+    // Converts the object to raw bytes for the NIO channel
+    public byte[] getBytes() {
+        byte[] body = bodyStream.toByteArray();
+        
+        StringBuilder headerBuilder = new StringBuilder();
+        headerBuilder.append("HTTP/1.1 ").append(status).append(" ").append(statusMessage).append("\r\n");
+        
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            headerBuilder.append(entry.getKey()).append(": ").append(entry.getValue()).append("\r\n");
+        }
+        
+        headerBuilder.append("Content-Length: ").append(body.length).append("\r\n");
+        headerBuilder.append("\r\n");
 
-	public String getReasonPhrase() {
-		return reasonPhrase;
-	}
-
-	public Map<String, String> getHeaders() {
-		return headers;
-	}
-
-	public void setHeader(String name, String value) {
-		headers.put(name, value);
-	}
-
-	public void addHeader(String name, String value) {
-		headers.put(name, value);
-	}
-
-	public byte[] getBody() {
-		return body;
-	}
-
-	public void setBody(byte[] body) {
-		this.body = body;
-		if (body != null) {
-			headers.put("Content-Length", String.valueOf(body.length));
-		}
-	}
-
-	public void setBody(String s) {
-		if (s == null) {
-			setBody((byte[]) null);
-		} else {
-			setBody(s.getBytes());
-		}
-	}
-
-	public String getBodyAsString() {
-		return body == null ? null : new String(body);
-	}
+        byte[] headerBytes = headerBuilder.toString().getBytes(StandardCharsets.UTF_8);
+        
+        // Combine header + body
+        byte[] fullResponse = new byte[headerBytes.length + body.length];
+        System.arraycopy(headerBytes, 0, fullResponse, 0, headerBytes.length);
+        System.arraycopy(body, 0, fullResponse, headerBytes.length, body.length);
+        
+        return fullResponse;
+    }
 }

@@ -31,4 +31,16 @@ public class Servlet implements IServlet {
         return "/";
     }
 
+    @Override
+    public void doPut(HttpRequest request, HttpResponse response) throws IOException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'doPut'");
+    }
+
+    @Override
+    public void doDelete(HttpRequest request, HttpResponse response) throws IOException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'doDelete'");
+    }
+
 }

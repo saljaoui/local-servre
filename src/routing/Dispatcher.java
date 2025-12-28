@@ -26,38 +26,44 @@ public class Dispatcher {
         servletRegistry.put(servlet.getPath(), servlet);
     }
 
-    public void dispatch(HttpRequest request, HttpResponse response, ConnectionHandler connection) {
+    public boolean dispatch(HttpRequest request, HttpResponse response) {
         String path = request.getPath();
         IServlet servlet = servletRegistry.get(path);
-        if (servlet != null) {
-            try {
-                System.out.println("[Dispatcher] Routing to Servlet: " + servlet.getClass().getSimpleName());
-
-                switch (request.getMethod()) {
-                    case "GET" -> servlet.doGet(request, response);
-                    case "POST" -> servlet.doPost(request, response);
-                    default -> {
-                        response.setStatus(405, "Method Not Allowed");
-                        response.setBody("Method Not Allowed");
-                    }
+        // 2. Prefix Match (e.g., "/users" matches "/users/1")
+        if (servlet == null) {
+            for (String routePath : servletRegistry.keySet()) {
+                if (path.startsWith(routePath)) {
+                    servlet = servletRegistry.get(routePath);
+                    break;
                 }
-            } catch (Exception e) {
-                response.setStatus(500, "Internal Server Error");
-                response.setBody("Internal Server Error");
             }
         }
+         if (servlet!=null){
+            try {
+                if ("GET".equalsIgnoreCase(request.getMethod())){
+                    servlet.doGet(request, response);
+                }
+                else if ("POST".equalsIgnoreCase(request.getMethod())){
+                    servlet.doPost(request, response);
+                }
+                else if ("PUT".equalsIgnoreCase(request.getMethod())){
+                    servlet.doPut(request, response);
+                }
+                else if ("DELETE".equalsIgnoreCase(request.getMethod())){
+                    servlet.doDelete(request, response);
+                }
+                else {
+                    response.setStatus(405);
+                    response.setStatusMessage("Method Not Allowed");
+                    response.write("405 Method Not Allowed");
+                }
+            } catch (Exception e) {
+                //  handle exception
+            }
+         }
 
-        // B. If NO Servlet matched, check your STANDARD ROUTES/CONFIG
-        // This calls your existing StaticHandler, UploadHandler, etc.
-        // Assuming you have a Router class that handles this logic:
-        Router router = new Router(); // Or inject it via constructor
-        boolean handled = router.routeRequest(request, response, connection);
+        return false; // No servlet found
 
-        // C. If nothing handled it (Router returned false)
-        if (!handled) {
-            response.setStatus(404, " Not Found");
-
-        }
     }
 
 }
