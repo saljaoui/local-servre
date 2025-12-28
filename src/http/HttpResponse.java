@@ -8,7 +8,7 @@ public class HttpResponse {
 	private String reasonPhrase = "OK";
 	private final Map<String, String> headers = new LinkedHashMap<>();
 	private byte[] body;
-
+    
 	public HttpResponse() {
 		headers.put("Server", "SonicServer");
 	}
