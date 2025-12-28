@@ -6,17 +6,8 @@ public class Servlet implements IServlet {
 
     @Override
     public void doGet(HttpRequest request, HttpResponse response) throws IOException {
-        // Auto-generated method stub
-        String user = request.getParameter("name"); // ?name=Alice
-
-        // response.setContentType("text/html");
-        // response.write("<html><body>");
-        // response.write("<h1>Welcome Home!</h1>");
-        // if (user != null) {
-        //     response.write("<p>Hello, " + user + "!</p>");
-        // }
-        // response.write("<p>This page is served by a Java Servlet.</p>");
-        // response.write("</body></html>");
+        response.setContentType("text/html");
+        response.write("<html><body><h1>Welcome to the Home Page</h1></body></html>");
     }
 
     @Override
