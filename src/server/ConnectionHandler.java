@@ -10,12 +10,10 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import utils.Logger;
 
 public class ConnectionHandler {
-    // private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
+    private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
 
-    private static final String TAG = "Connection";
     private static final int BUFFER_SIZE = 8192;
 
     private final SocketChannel channel;
@@ -50,7 +48,7 @@ public class ConnectionHandler {
         this.state = State.READING_REQUEST;
         this.requestData = new StringBuilder();
 
-        Logger.debug(TAG, "New connection from: " + getRemoteAddress());
+        logger.debug("New connection from: " + getRemoteAddress());
     }
 
 
@@ -86,7 +84,7 @@ public class ConnectionHandler {
                     contentLength = Integer.parseInt(line.substring(15).trim());
                     break;
                 } catch (NumberFormatException e) {
-                    Logger.error(TAG, "Invalid Content-Length header", e);
+                    logger.error("Invalid Content-Length header", e);
                     return true; // treat as complete to allow processing of what we have
                 }
             }
@@ -149,7 +147,7 @@ public class ConnectionHandler {
             int bytesWritten = channel.write(writeBuffer);
             responsePosition += bytesWritten;
 
-            Logger.debug(TAG, "Wrote " + bytesWritten + " bytes to " + getRemoteAddress());
+            logger.debug("Wrote " + bytesWritten + " bytes to " + getRemoteAddress());
         }
 
         // Check if write is complete
@@ -216,7 +214,7 @@ public class ConnectionHandler {
     }
 
     public void processRequest() {
-        Logger.info(TAG, "Processing request from " + getRemoteAddress());
+        logger.info("Processing request from " + getRemoteAddress());
          if (serverBlock == null) {
             sendErrorResponse(500, "Server configuration missing");
             return;
@@ -355,11 +353,11 @@ public class ConnectionHandler {
     public void close() {
         state = State.CLOSED;
         try {
-            Logger.debug(TAG, "Closing connection: " + getRemoteAddress());
+            logger.debug("Closing connection: " + getRemoteAddress());
             channel.close();
             key.cancel();
         } catch (IOException e) {
-            Logger.error(TAG, "Error closing connection", e);
+            logger.error("Error closing connection", e);
         }
     }
 
