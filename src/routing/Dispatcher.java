@@ -8,6 +8,7 @@ import http.HttpRequest;
 import http.HttpResponse;
 import http.IServlet;
 import http.Servlet;
+import server.ConnectionHandler;
 
 public class Dispatcher {
     private final Map<String, IServlet> servletRegistry = new HashMap<>();
@@ -24,14 +25,17 @@ public class Dispatcher {
     private void registerServlet(IServlet servlet) {
         servletRegistry.put(servlet.getPath(), servlet);
     }
-    public void dispatch(HttpRequest request, HttpResponse response) {
+
+    public void dispatch(HttpRequest request, HttpResponse response, ConnectionHandler connection) {
         String path = request.getPath();
         IServlet servlet = servletRegistry.get(path);
         if (servlet != null) {
             try {
+                System.out.println("[Dispatcher] Routing to Servlet: " + servlet.getClass().getSimpleName());
+
                 switch (request.getMethod()) {
-                    case "GET" -> servlet.doGet( (http.HttpRequest) request, response);
-                    case "POST" -> servlet.doPost((http.HttpRequest) request, response);
+                    case "GET" -> servlet.doGet(request, response);
+                    case "POST" -> servlet.doPost(request, response);
                     default -> {
                         response.setStatus(405, "Method Not Allowed");
                         response.setBody("Method Not Allowed");
@@ -41,9 +45,18 @@ public class Dispatcher {
                 response.setStatus(500, "Internal Server Error");
                 response.setBody("Internal Server Error");
             }
-        } else {
-            response.setStatus(404, "Not Found");
-            response.setBody("Not Found");
+        }
+
+        // B. If NO Servlet matched, check your STANDARD ROUTES/CONFIG
+        // This calls your existing StaticHandler, UploadHandler, etc.
+        // Assuming you have a Router class that handles this logic:
+        Router router = new Router(); // Or inject it via constructor
+        boolean handled = router.routeRequest(request, response, connection);
+
+        // C. If nothing handled it (Router returned false)
+        if (!handled) {
+            response.setStatus(404, " Not Found");
+
         }
     }
 
