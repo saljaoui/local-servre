@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.channels.*;
 import java.util.Iterator;
 import util.SonicLogger;
-import utils.Logger;
 
 public class EventLoop {
 
@@ -80,14 +79,14 @@ public class EventLoop {
                     // Change interest to write so selector will notify when writable
                     key.interestOps(SelectionKey.OP_WRITE);
                 } catch (Exception e) {
-                    Logger.error("Server", "Error processing request: " + e.getMessage(), e);
+                    logger.error("Error processing request: " + e.getMessage(), e);
                     handler.sendErrorResponse(500, "Internal Server Error");
                     key.interestOps(SelectionKey.OP_WRITE);
                 }
             }
 
         } catch (IOException e) {
-            Logger.debug("Server", "Client disconnected: " + e.getMessage());
+            logger.debug("Client disconnected: " + e.getMessage());
             try {
                 channel.close();
             } catch (IOException ignore) {
