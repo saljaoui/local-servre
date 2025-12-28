@@ -7,7 +7,7 @@ public class Servlet implements IServlet {
     @Override
     public void doGet(HttpRequest request, HttpResponse response) throws IOException {
         // Auto-generated method stub
-        String user = request.getParameter("name"); // ?name=Alice
+        // String user = request.getParameter("name"); // ?name=Alice
 
         // response.setContentType("text/html");
         // response.write("<html><body>");
