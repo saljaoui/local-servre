@@ -39,6 +39,20 @@ public class ConnectionHandler {
         WRITING_RESPONSE,
         CLOSED
     }
+     public ConnectionHandler(SocketChannel channel, SelectionKey key, WebServerConfig.ServerBlock serverBlock) {
+        this.channel = channel;
+        this.key = key;
+        this.serverBlock = serverBlock;
+        this.readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+        this.writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+        this.createdAt = System.currentTimeMillis();
+        this.lastActivity = createdAt;
+        this.state = State.READING_REQUEST;
+        this.requestData = new StringBuilder();
+
+        Logger.debug(TAG, "New connection from: " + getRemoteAddress());
+    }
+
 
     private boolean checkRequestComplete() {
         String request = requestData.toString();
@@ -86,20 +100,7 @@ public class ConnectionHandler {
         return (request.length() - bodyStart) >= contentLength;
     }
 
-    public ConnectionHandler(SocketChannel channel, SelectionKey key, WebServerConfig.ServerBlock serverBlock) {
-        this.channel = channel;
-        this.key = key;
-        this.serverBlock = serverBlock;
-        this.readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-        this.writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-        this.createdAt = System.currentTimeMillis();
-        this.lastActivity = createdAt;
-        this.state = State.READING_REQUEST;
-        this.requestData = new StringBuilder();
-
-        Logger.debug(TAG, "New connection from: " + getRemoteAddress());
-    }
-
+   
     public boolean read() throws IOException {
         updateActivity();
         int bytesRead = channel.read(readBuffer);
@@ -134,7 +135,6 @@ public class ConnectionHandler {
         // String responseString = new String(responseData, StandardCharsets.UTF_8);
         // System.out.println("test ConnectionHandler.write() " + responseString);
         if (responseData == null) {
-            System.out.println("ConnectionHandler.write()");
             prepareResponse();
         }
 
@@ -238,13 +238,16 @@ public class ConnectionHandler {
             String[] requestParts = requestLines[0].split(" ");
             if (requestParts.length > 0) {
                 method = requestParts[0];
+                System.err.println("Extracted method: " + method); // Debug print
             }
             if (requestParts.length > 1) {
                 path = requestParts[1];
+                System.err.println("Extracted path: " + path); // Debug print
             }
         }
 
         var route = serverBlock.findRoute(path);
+        System.err.println("Matched route: " + route); // Debug print
         if (route == null) {
             sendErrorResponse(404, "Not Found");
             return;
