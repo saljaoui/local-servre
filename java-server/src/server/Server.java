@@ -1,5 +1,6 @@
 package server;
 
+import config.ServerConfig;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
@@ -8,8 +9,6 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.HashMap;
 import java.util.Map;
-
-import config.ServerConfig;
 import utils.Logger;
 
 public class Server {
@@ -66,8 +65,9 @@ public class Server {
 
     private void init() throws IOException {
         // Create a selector for multiplexing I/O operations
-        selector = Selector.open();
+        selector = Selector.open(); // (Traffic Controller)
         for (int port : config.getPorts()) {
+            // 2. Open Channel (The Door)
             ServerSocketChannel channel = ServerSocketChannel.open();
             // Configure channel for non-blocking mode
             channel.configureBlocking(false);// no bloking
