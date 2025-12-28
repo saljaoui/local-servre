@@ -1,6 +1,9 @@
 package server;
 
 import config.model.WebServerConfig;
+import http.HttpRequest;
+import http.HttpResponse;
+import routing.Dispatcher;
 import util.SonicLogger;
 
 import java.io.IOException;
@@ -30,6 +33,7 @@ public class ConnectionHandler {
     private byte[] responseData;
     private int responsePosition;
     private boolean writeComplete;
+    private final Dispatcher dispatcher = new Dispatcher();
 
     public enum State {
         READING_REQUEST,
@@ -37,7 +41,8 @@ public class ConnectionHandler {
         WRITING_RESPONSE,
         CLOSED
     }
-     public ConnectionHandler(SocketChannel channel, SelectionKey key, WebServerConfig.ServerBlock serverBlock) {
+
+    public ConnectionHandler(SocketChannel channel, SelectionKey key, WebServerConfig.ServerBlock serverBlock) {
         this.channel = channel;
         this.key = key;
         this.serverBlock = serverBlock;
@@ -50,7 +55,6 @@ public class ConnectionHandler {
 
         logger.debug("New connection from: " + getRemoteAddress());
     }
-
 
     private boolean checkRequestComplete() {
         String request = requestData.toString();
@@ -98,7 +102,6 @@ public class ConnectionHandler {
         return (request.length() - bodyStart) >= contentLength;
     }
 
-   
     public boolean read() throws IOException {
         updateActivity();
         int bytesRead = channel.read(readBuffer);
@@ -115,12 +118,17 @@ public class ConnectionHandler {
         String receivedData = new String(data);
         requestData.append(receivedData);
         // Clear buffer for next read
-        // DEBUG: Print the received data
-        System.out.println("=== DEBUG: Received Data ===");
-        System.out.println(receivedData);
-        System.out.println("=== END DEBUG ===");
-
         readBuffer.clear();
+
+        // If headers complete, log the header portion for debugging
+        int headerEnd = requestData.indexOf("\r\n\r\n");
+        if (headerEnd != -1) {
+            String headersPart = requestData.substring(0, headerEnd);
+            logger.debug("Received headers:\n" + headersPart);
+            String startLine = headersPart.split("\r\n", 2)[0];
+            logger.debug("Start-line: " + startLine);
+        }
+
         return checkRequestComplete();
         // return false;
     }
@@ -206,96 +214,68 @@ public class ConnectionHandler {
         return keepAlive;
     }
 
-    private boolean isRequestComplete() {
-        String data = requestData.toString();
-        // Simple check: headers end with \r\n\r\n
-        // Handle body for POST requests (Content-Length)
-        return data.contains("\r\n\r\n");
-    }
 
     public void processRequest() {
         logger.info("Processing request from " + getRemoteAddress());
-         if (serverBlock == null) {
-            sendErrorResponse(500, "Server configuration missing");
-            return;
-        }
-        // DEBUG: Print the complete request
-        System.out.println("=== DEBUG: Complete Request ===");
-        System.out.println(requestData.toString());
-        System.out.println("=== END DEBUG ===");
 
-        // Parse request and route to handlers
-        // For now, send a simple response
-        String requestStr = requestData.toString();
-        String path = "/";
-        String method = "GET";
-
-        // Extract method and path from request (first line: "GET /path HTTP/1.1")
-        String[] requestLines = requestStr.split("\r\n");
-        if (requestLines.length > 0) {
-            String[] requestParts = requestLines[0].split(" ");
-            if (requestParts.length > 0) {
-                method = requestParts[0];
-                System.err.println("Extracted method: " + method); // Debug print
-            }
-            if (requestParts.length > 1) {
-                path = requestParts[1];
-                System.err.println("Extracted path: " + path); // Debug print
-            }
-        }
-
-        var route = serverBlock.findRoute(path);
-        System.err.println("Matched route: " + route); // Debug print
-        if (route == null) {
-            sendErrorResponse(404, "Not Found");
-            return;
-        }
-
-        if (!route.isMethodAllowed(method)) {
-            sendErrorResponse(405, "Method Not Allowed");
-            return;
-        }
-
-        if (route.isRedirect()) {
-            sendRedirect(route.getRedirect().getStatus(), route.getRedirect().getTo());
-            return;
-        }
+        HttpRequest request = new HttpRequest();
+        String raw = requestData.toString();
         try {
-            // Determine which folder to use and which index file to use.
-            // Use route.root if defined, otherwise fallback to server.root
-            String rootFolder = (route.getRoot() != null) ? route.getRoot() : serverBlock.getRoot();
-            String indexFile = (route.getIndex() != null) ? route.getIndex() : ".html";
-            // Resolve the full file path (handles '/' -> '/index.html')
-            Path filePath = resolveFilePath(rootFolder, path, indexFile);
-            System.err.println("get index " +filePath );
-
-            if (filePath == null || !Files.exists(filePath) || Files.isDirectory(filePath)) {
-                // File not found
-
-                // Check if AutoIndex is ON (listing files in folder)
-                if (route.isAutoIndex() && filePath != null && Files.isDirectory(filePath)) {
-                    //  Implement generateDirectoryListing(filePath)
-                    sendErrorResponse(200, "Auto-indexing not implemented yet for: " + path);
-                } else {
-                    sendErrorResponse(404, "Not Found");
+            String firstLine = raw.substring(0, raw.indexOf("\r\n"));
+            logger.debug("Request start-line: " + firstLine);
+            String[] parts = firstLine.split(" ");
+            request.setMethod(parts[0]);
+            request.setUri(parts[1]);
+            String uri = request.getUri();
+            int queryIdx = uri.indexOf('?');
+            if (queryIdx > -1) {
+                request.setPath(uri.substring(0, queryIdx));
+                request.setQueryString(uri.substring(queryIdx + 1));
+                logger.debug("QueryString: " + request.getQueryString());
+                String[] pairs = request.getQueryString().split("&");
+                for (String pair : pairs) {
+                    String[] kv = pair.split("=");
+                    if (kv.length == 2)
+                        request.setParameter(kv[0], kv[1]);
                 }
-                return;
+            } else {
+                request.setPath(uri);
+                request.setQueryString("");
             }
 
-            // Read file and send
-            byte[] fileContent = Files.readAllBytes(filePath);
-            String contentType = getContentType(filePath);
-
-            sendResponse(200, contentType, fileContent);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            sendErrorResponse(500, "Internal Server Error");
+        } catch (Exception e) {
+            // handle exception
         }
-        // Create response based on path
+        // ==========================================
+        // STEP 2: PREPARE RESPONSE CONTAINER
+        // ==========================================
+        HttpResponse response = new HttpResponse();
 
+        // ==========================================
+        // STEP 3: DISPATCH (Dynamic Logic)
+        // ==========================================
+        boolean handledByServlet = dispatcher.dispatch(request, response);
+
+        // ==========================================
+        // STEP 4: FALLBACK (Static Files)
+        // ==========================================
+        if (!handledByServlet) {
+            // If no Servlet handled it, try to serve a file from your config
+            // ... (Use your existing logic to serve ./www/main/index.html here) ...
+            // For now, just 404 if no servlet matches
+            response.setStatus(404);
+            response.write("<h1>404 Not Found</h1><p>No servlet found for: " + request.getPath() + "</p>");
+        }
+
+        // ==========================================
+        // STEP 5: PREPARE FOR NIO WRITE
+        // ==========================================
+        this.responseData = response.getBytes(); // Convert object to bytes
+        this.responsePosition = 0;
+        this.state = State.WRITING_RESPONSE;
+        key.interestOps(SelectionKey.OP_WRITE);
     }
-// Reuse the Content-Type helper from before
+    // Reuse the Content-Type helper from before
 
     private String getContentType(Path filePath) {
         String fileName = filePath.getFileName().toString();
@@ -338,7 +318,7 @@ public class ConnectionHandler {
             if (path.endsWith("/")) {
                 path = path + indexFile;
             }
-             Path resolved = Paths.get(root, path).normalize();
+            Path resolved = Paths.get(root, path).normalize();
 
             // Security: Ensure we don't go outside the root folder (e.g. ../../)
             if (!resolved.startsWith(Paths.get(root).normalize())) {
@@ -379,11 +359,11 @@ public class ConnectionHandler {
 
     public void sendErrorResponse(int statusCode, String message) {
         String response = String.format("""
-                                        HTTP/1.1 %d %s\r
-                                        Content-Type: text/plain\r
-                                        Connection: close\r
-                                        \r
-                                        %d %s""",
+                HTTP/1.1 %d %s\r
+                Content-Type: text/plain\r
+                Connection: close\r
+                \r
+                %d %s""",
                 statusCode, message, statusCode, message);
 
         responseData = response.getBytes();

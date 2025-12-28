@@ -22,8 +22,17 @@ public class EventLoop {
                 try {
                     if (key.isAcceptable()) {
                         handleAccept(key, selector);
-                    } else if (key.isReadable()) {
+                        // log acceptance
+                        try {
+                            // remote address unknown until we accept; handler logs remote when created
+                            logger.debug("New incoming connection on server socket");
+                        } catch (Exception ignore) {}
+                    }
+                    if (key.isReadable()) {
                         handleRead(key);
+                    }
+                    if (key.isWritable()) {
+                        handleWrite(key);
                     }
                 } catch (IOException e) {
                     logger.error("Error handling connection", e);
@@ -95,7 +104,7 @@ public class EventLoop {
         }
     }
 
-    private void handleWrite(SelectionKey key) {
+    private static void handleWrite(SelectionKey key) {
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
         if (handler == null) {
             key.cancel();

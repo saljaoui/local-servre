@@ -1,13 +1,29 @@
 package http;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Servlet implements IServlet {
 
     @Override
     public void doGet(HttpRequest request, HttpResponse response) throws IOException {
-        response.setContentType("text/html");
-        response.write("<html><body><h1>Welcome to the Home Page</h1></body></html>");
+        // Auto-generated method stub
+        Map<String, String> data = new HashMap<>();
+        data.put("server_name", "MyJavaNioServer");
+        data.put("path", request.getPath());
+        
+        // Get query param ?name=Alice
+        String user = request.param("name");
+        data.put("user", (user != null) ? user : "Guest");
+
+
+        // 2. Parse Template (try known workspace location first)
+        String htmlContent = TemplateEngine.render("www/main/index.html", data);
+
+        // 3. Send Response
+        response.setContentType("text/html; charset=utf-8");
+        response.write(htmlContent);
     }
 
     @Override

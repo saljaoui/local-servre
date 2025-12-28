@@ -58,8 +58,16 @@ public class Dispatcher {
                     response.write("405 Method Not Allowed");
                 }
             } catch (Exception e) {
-                //  handle exception
+                // handle exception: report 500
+                try {
+                    response.setStatus(500);
+                    response.setStatusMessage("Internal Server Error");
+                    response.write("500 Internal Server Error");
+                } catch (Exception ex) {
+                    // ignore
+                }
             }
+            return true; // servlet found & handled (even if it returned error)
          }
 
         return false; // No servlet found

@@ -19,6 +19,16 @@ public class HttpRequest {
     private String path;
     private String uri;
     private String queryString;
+    private Map<String, String> parameter;
+    
+
+    public Map<String, String> getParameter() {
+        return parameter;
+    }
+    public void setParameter(Map<String, String> parameter) {
+        this.parameter = parameter;
+    }
+
     private String query;
     private String httpVersion;
 
@@ -128,6 +138,20 @@ public class HttpRequest {
     public List<String> paramValues(String name) {
         List<String> vals = queryParams.get(name);
         return vals == null ? List.of() : Collections.unmodifiableList(vals);
+    }
+
+    /**
+     * Compatibility helper used by ConnectionHandler: set a single parameter.
+     */
+    public void setParameter(String name, String value) {
+        if (name == null) return;
+        // add to queryParams map
+        queryParams.computeIfAbsent(name, __ -> new ArrayList<>()).add(value);
+        // also maintain single-value parameter map for legacy callers
+        if (this.parameter == null) {
+            this.parameter = new LinkedHashMap<>();
+        }
+        this.parameter.put(name, value);
     }
 
     public boolean isMethod(String candidate) {
