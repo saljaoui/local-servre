@@ -3,9 +3,6 @@ package http;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.net.URLDecoder;
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
 
 public class HttpRequest {
     private String method;
