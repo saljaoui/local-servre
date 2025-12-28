@@ -5,60 +5,62 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
 
+import util.SonicLogger;
+
 public class EventLoop {
 
-    // The main selector loop
+    private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
+
     public static void loop(Selector selector) throws IOException {
 
         while (true) {
-            selector.select(); // wait for events (blocking)
-
+            selector.select();
             Iterator<SelectionKey> it = selector.selectedKeys().iterator();
 
             while (it.hasNext()) {
                 SelectionKey key = it.next();
-                it.remove(); // remove key to prevent re-processing
+                it.remove();
 
-                // 1️⃣ Accept new client connections
-                if (key.isAcceptable()) {
-                    ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
-                    SocketChannel client = serverChannel.accept(); // accept the client
-                    client.configureBlocking(false); // non-blocking
-                    client.register(selector, SelectionKey.OP_READ); // watch client for READ events
-                }
-
-                // 2️⃣ Handle client data
-                else if (key.isReadable()) {
-                    SocketChannel client = (SocketChannel) key.channel();
-
-                    ByteBuffer buffer = ByteBuffer.allocate(1024); // allocate buffer
-                    int bytesRead = client.read(buffer);
-
-                    if (bytesRead == -1) { // client closed connection
-                        client.close();
-                        continue;
+                try {
+                    if (key.isAcceptable()) {
+                        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
+                        SocketChannel client = serverChannel.accept();
+                        client.configureBlocking(false);
+                        client.register(selector, SelectionKey.OP_READ);
                     }
+                    else if (key.isReadable()) {
+                        SocketChannel client = (SocketChannel) key.channel();
+                        ByteBuffer buffer = ByteBuffer.allocate(1024);
+                        int bytesRead = client.read(buffer);
 
-                    buffer.flip(); // switch buffer to read mode
-                    byte[] data = new byte[buffer.remaining()];
-                    buffer.get(data);
+                        if (bytesRead == -1) {
+                            client.close();
+                            continue;
+                        }
 
-                    // print client request
-                    System.out.println("----- REQUEST -----");
-                    System.out.println(new String(data));
-                    System.out.println("-------------------");
+                        buffer.flip();
+                        byte[] data = new byte[buffer.remaining()];
+                        buffer.get(data);
 
-                    // simple HTTP response
-                    String body = "Hello omar & simo from soufian";
-                    String response = "HTTP/1.1 200 OK\r\n" +
-                            "Content-Type: text/plain; charset=UTF-8\r\n" +
-                            "Content-Length: " + body.getBytes().length + "\r\n" +
-                            "Connection: close\r\n" +
-                            "\r\n" +
-                            body;
+                        System.out.println("----- REQUEST -----");
+                        System.out.println(new String(data));
+                        System.out.println("-------------------");
 
-                    client.write(ByteBuffer.wrap(response.getBytes())); // send response
-                    client.close(); // close connection
+                        String body = "Hello omar & simo from soufian";
+                        String response = "HTTP/1.1 200 OK\r\n" +
+                                "Content-Type: text/plain; charset=UTF-8\r\n" +
+                                "Content-Length: " + body.getBytes().length + "\r\n" +
+                                "Connection: close\r\n" +
+                                "\r\n" +
+                                body;
+
+                        client.write(ByteBuffer.wrap(response.getBytes()));
+                        client.close();
+                    }
+                } catch (IOException e) {
+                    logger.error("Error handling connection", e);
+                    key.cancel();
+                    key.channel().close();
                 }
             }
         }

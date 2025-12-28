@@ -9,40 +9,42 @@ import java.util.ArrayList;
 import java.util.List;
 
 import config.model.WebServerConfig;
+import util.SonicLogger;
 
 public class Server {
 
+    private static final SonicLogger logger = SonicLogger.getLogger(Server.class);
     private final WebServerConfig config;
 
     public Server(WebServerConfig config) {
-        this.config = config; // save configuration (host + port)
+        this.config = config;
     }
 
     public void start() {
         try {
-            // Create the selector to handle multiple channels/events
+            logger.info("Opening selector for event-driven I/O");
             Selector selector = Selector.open();
 
             List<ServerSocketChannel> serverChannels = new ArrayList<>();
+            
+            logger.info("Binding " + config.getServers().size() + " server(s) to network interfaces");
+            
             for (WebServerConfig.ServerBlock serverBlock : config.getServers()) {
                 for (WebServerConfig.ListenAddress addr : serverBlock.getListen()) {
                     ServerSocketChannel channel = ServerSocketChannel.open();
                     channel.configureBlocking(false);
                     channel.bind(new InetSocketAddress(addr.getHost(), addr.getPort()));
-                    // attach server block so accept path knows which logical server this channel
-                    // belongs to
                     channel.register(selector, SelectionKey.OP_ACCEPT, serverBlock);
                     serverChannels.add(channel);
-                    System.out.println("Server running on http://"
-                            + addr.getHost() + ":" + addr.getPort());
+                    
+                    logger.success("Server listening on http://" + addr.getHost() + ":" + addr.getPort());
                 }
             }
-
-            // Call EventLoop to start processing client connections
+            
             EventLoop.loop(selector);
 
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Failed to start server", e);
         }
     }
 }
