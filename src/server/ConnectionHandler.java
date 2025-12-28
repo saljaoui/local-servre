@@ -1,6 +1,8 @@
 package server;
 
 import config.model.WebServerConfig;
+import util.SonicLogger;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -11,6 +13,7 @@ import java.nio.file.Paths;
 import utils.Logger;
 
 public class ConnectionHandler {
+    // private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
 
     private static final String TAG = "Connection";
     private static final int BUFFER_SIZE = 8192;
@@ -229,16 +232,20 @@ public class ConnectionHandler {
         String path = "/";
         String method = "GET";
 
-        // Extract path from request (first line: "GET /path HTTP/1.1")
+        // Extract method and path from request (first line: "GET /path HTTP/1.1")
         String[] requestLines = requestStr.split("\r\n");
         if (requestLines.length > 0) {
             String[] requestParts = requestLines[0].split(" ");
+            if (requestParts.length > 0) {
+                method = requestParts[0];
+            }
             if (requestParts.length > 1) {
                 path = requestParts[1];
             }
         }
+
         var route = serverBlock.findRoute(path);
-        if (route != null) {
+        if (route == null) {
             sendErrorResponse(404, "Not Found");
             return;
         }
@@ -253,20 +260,20 @@ public class ConnectionHandler {
             return;
         }
         try {
-            // Determine which folder to use. 
+            // Determine which folder to use and which index file to use.
             // Use route.root if defined, otherwise fallback to server.root
             String rootFolder = (route.getRoot() != null) ? route.getRoot() : serverBlock.getRoot();
+            String indexFile = (route.getIndex() != null) ? route.getIndex() : "index.html";
 
-            // Resolve the full file path
-            // Note: This handles the '/' vs '/index.html' logic inside
-            Path filePath = resolveFilePath(rootFolder, path, route.getIndex());
+            // Resolve the full file path (handles '/' -> '/index.html')
+            Path filePath = resolveFilePath(rootFolder, path, indexFile);
 
             if (filePath == null || !Files.exists(filePath) || Files.isDirectory(filePath)) {
                 // File not found
 
                 // Check if AutoIndex is ON (listing files in folder)
                 if (route.isAutoIndex() && filePath != null && Files.isDirectory(filePath)) {
-                    // TODO: Implement generateDirectoryListing(filePath)
+                    //  Implement generateDirectoryListing(filePath)
                     sendErrorResponse(200, "Auto-indexing not implemented yet for: " + path);
                 } else {
                     sendErrorResponse(404, "Not Found");

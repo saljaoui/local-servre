@@ -1,9 +1,8 @@
 package config;
+import config.model.WebServerConfig;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-
-import config.model.WebServerConfig;
 
 /**
  * Main entry point for loading and parsing web server configuration
@@ -14,10 +13,17 @@ public class WebConfigLoader {
 
     public static WebServerConfig load() {
         try {            
-            String content = Files.readString(Path.of(FILE_PATH));            
+            String content = Files.readString(Path.of(FILE_PATH));  
+            WebServerConfig config = parseConfig(content);
+            config.validate();
             return parseConfig(content);
         } catch (IOException e) {
             e.printStackTrace();
+            System.exit(1);
+            return null;
+        } catch (IllegalArgumentException e) {
+            System.err.println("Invalid configuration: " + e.getMessage());
+            System.exit(1);
             return null;
         }
     }
