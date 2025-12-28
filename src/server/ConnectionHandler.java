@@ -266,10 +266,10 @@ public class ConnectionHandler {
             // Determine which folder to use and which index file to use.
             // Use route.root if defined, otherwise fallback to server.root
             String rootFolder = (route.getRoot() != null) ? route.getRoot() : serverBlock.getRoot();
-            String indexFile = (route.getIndex() != null) ? route.getIndex() : "index.html";
-
+            String indexFile = (route.getIndex() != null) ? route.getIndex() : ".html";
             // Resolve the full file path (handles '/' -> '/index.html')
             Path filePath = resolveFilePath(rootFolder, path, indexFile);
+            System.err.println("get index " +filePath );
 
             if (filePath == null || !Files.exists(filePath) || Files.isDirectory(filePath)) {
                 // File not found
@@ -340,8 +340,7 @@ public class ConnectionHandler {
             if (path.endsWith("/")) {
                 path = path + indexFile;
             }
-
-            Path resolved = Paths.get(root, path).normalize();
+             Path resolved = Paths.get(root, path).normalize();
 
             // Security: Ensure we don't go outside the root folder (e.g. ../../)
             if (!resolved.startsWith(Paths.get(root).normalize())) {

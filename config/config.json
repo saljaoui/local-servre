@@ -34,7 +34,7 @@
           "methods": [
             "GET"
           ],
-          "root": "./www",
+          "root": "./www/main",
           "index": "index.html",
           "autoIndex": false
         },
