@@ -1,6 +1,8 @@
 package server;
 
 import config.model.WebServerConfig;
+import config.model.WebServerConfig.ListenAddress;
+import config.model.WebServerConfig.ServerBlock;
 import util.SonicLogger;
 
 import java.io.IOException;
@@ -10,9 +12,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 public class Server {
 
@@ -20,7 +20,7 @@ public class Server {
 
     private final WebServerConfig config;
     private final Map<Integer, ServerSocketChannel> serverChannels = new HashMap<>();
-    
+
     private Selector selector;
 
     public Server(WebServerConfig config) {
@@ -32,11 +32,11 @@ public class Server {
             selector = Selector.open();
             registerShutdownHook();
             bindAllServers();
-            
+
             logger.success("Server started with " + serverChannels.size() + " listener(s)");
-            
+
             EventLoop.loop(selector);
-            
+
         } catch (IOException e) {
             logger.error("Failed to start server", e);
             // throw e;
@@ -45,12 +45,13 @@ public class Server {
         }
     }
 
-    private void bindAllServers() throws IOException {        
-        Set<String> boundAddresses = new HashSet<>();
-        
+    private void bindAllServers() throws IOException {
         try {
             for (WebServerConfig.ServerBlock serverBlock : config.getServers()) {
-                bindServerBlock(serverBlock, boundAddresses);
+                WebServerConfig.ListenAddress addr = serverBlock.getListen();
+                if (addr != null) {
+                    bindSingleServer(addr, serverBlock);
+                }
             }
         } catch (IOException e) {
             closeAllChannels();
@@ -58,35 +59,23 @@ public class Server {
         }
     }
 
-    private void bindServerBlock(WebServerConfig.ServerBlock serverBlock, Set<String> boundAddresses) 
-            throws IOException {
-        
-        for (WebServerConfig.ListenAddress addr : serverBlock.getListen()) {
-            String addressKey = addr.getHost() + ":" + addr.getPort();
-            
-            bindSingleServer(addr, serverBlock);
-            boundAddresses.add(addressKey);
-        }
-    }
+    private void bindSingleServer(ListenAddress addr, ServerBlock serverBlock) throws IOException {
 
-    private void bindSingleServer(WebServerConfig.ListenAddress addr, 
-                                   WebServerConfig.ServerBlock serverBlock) throws IOException {
-        
         ServerSocketChannel channel = null;
-        
+
         try {
             channel = ServerSocketChannel.open();
             channel.configureBlocking(false);
             channel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
             channel.setOption(StandardSocketOptions.SO_RCVBUF, 128 * 1024);
-            
+
             channel.bind(new InetSocketAddress(addr.getHost(), addr.getPort()));
             channel.register(selector, SelectionKey.OP_ACCEPT, serverBlock);
-            
+
             serverChannels.put(addr.getPort(), channel);
-            
+
             logger.success("Listening on http://" + addr.getHost() + ":" + addr.getPort());
-            
+
         } catch (IOException e) {
             logger.error("Failed to bind " + addr.getHost() + ":" + addr.getPort(), e);
             if (channel != null) {
@@ -98,6 +87,7 @@ public class Server {
 
     private void registerShutdownHook() {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.err.println();
             logger.info("Shutdown signal received");
             shutdown();
         }, "shutdown-hook"));
@@ -105,7 +95,7 @@ public class Server {
 
     public void shutdown() {
         logger.info("Shutting down server...");
-        
+
         if (selector != null && selector.isOpen()) {
             selector.wakeup();
         }
@@ -113,10 +103,10 @@ public class Server {
 
     private void cleanup() {
         logger.info("Cleaning up resources...");
-        
+
         closeAllChannels();
         closeSelector();
-        
+
         logger.success("Server stopped");
     }
 

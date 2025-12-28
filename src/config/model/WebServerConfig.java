@@ -65,7 +65,7 @@ public class WebServerConfig {
     public static class ServerBlock {
 
         private String name;
-        private List<ListenAddress> listen;
+        private ListenAddress listen;
         private List<String> serverNames;
         private String root;
         private long clientMaxBodyBytes;
@@ -81,11 +81,11 @@ public class WebServerConfig {
             this.name = name;
         }
 
-        public List<ListenAddress> getListen() {
+        public ListenAddress getListen() {
             return listen;
         }
 
-        public void setListen(List<ListenAddress> listen) {
+        public void setListen(ListenAddress listen) {
             this.listen = listen;
         }
 
@@ -127,19 +127,6 @@ public class WebServerConfig {
 
         public void setRoutes(List<Route> routes) {
             this.routes = routes;
-        }
-
-        // Utility methods
-        public ListenAddress getDefaultListen() {
-            if (listen == null) {
-                return null;
-            }
-            for (ListenAddress addr : listen) {
-                if (addr.isDefault()) {
-                    return addr;
-                }
-            }
-            return listen.isEmpty() ? null : listen.get(0);
         }
 
         public Route findRoute(String path) {
@@ -454,12 +441,8 @@ public class WebServerConfig {
         }
 
         for (ServerBlock server : servers) {
-            if (server.getListen() != null) {
-                for (ListenAddress addr : server.getListen()) {
-                    if (addr.getPort() == port) {
-                        return server;
-                    }
-                }
+            if (server.getListen() != null && server.getListen().getPort() == port) {
+                return server;
             }
         }
 
@@ -484,31 +467,30 @@ public class WebServerConfig {
                 throw new IllegalArgumentException("Server name is required");
             }
 
-            if (server.getListen() == null || server.getListen().isEmpty()) {
+            if (server.getListen() == null) {
                 throw new IllegalArgumentException("Server '" + server.getName()
-                        + "' must have at least one listen address");
+                        + "' must have a listen address");
             }
 
-            // Validate listen entries
-            for (ListenAddress addr : server.getListen()) {
-                String host = (addr.getHost() == null || addr.getHost().trim().isEmpty())
-                        ? "0.0.0.0"
-                        : addr.getHost().trim();
+            // Validate listen entry
+            ListenAddress addr = server.getListen();
+            String host = (addr.getHost() == null || addr.getHost().trim().isEmpty())
+                    ? "0.0.0.0"
+                    : addr.getHost().trim();
 
-                int port = addr.getPort();
-                if (port < 1 || port > 65535) {
-                    throw new IllegalArgumentException("Invalid port: " + port
-                            + " in server '" + server.getName() + "'");
-                }
+            int port = addr.getPort();
+            if (port < 1 || port > 65535) {
+                throw new IllegalArgumentException("Invalid port: " + port
+                        + " in server '" + server.getName() + "'");
+            }
 
-                String key = host + ":" + port;
-                if (!listenKeys.add(key)) {
-                    throw new IllegalArgumentException("Duplicate listen address detected: " + key);
-                }
+            String key = host + ":" + port;
+            if (!listenKeys.add(key)) {
+                throw new IllegalArgumentException("Duplicate listen address detected: " + key);
+            }
 
-                if (addr.isDefault() && !defaultPorts.add(port)) {
-                    throw new IllegalArgumentException("More than one default server on port " + port);
-                }
+            if (addr.isDefault() && !defaultPorts.add(port)) {
+                throw new IllegalArgumentException("More than one default server on port " + port);
             }
 
             if (server.getRoutes() == null || server.getRoutes().isEmpty()) {

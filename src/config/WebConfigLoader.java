@@ -1,4 +1,5 @@
 package config;
+
 import config.model.WebServerConfig;
 import java.io.*;
 import java.nio.file.*;
@@ -6,14 +7,15 @@ import java.util.*;
 
 /**
  * Main entry point for loading and parsing web server configuration
- * Delegates low-level JSON parsing to JsonParser and type conversion to ValueParsers
+ * Delegates low-level JSON parsing to JsonParser and type conversion to
+ * ValueParsers
  */
 public class WebConfigLoader {
     private static final String FILE_PATH = "./config/config.json";
 
     public static WebServerConfig load() {
-        try {            
-            String content = Files.readString(Path.of(FILE_PATH));  
+        try {
+            String content = Files.readString(Path.of(FILE_PATH));
             WebServerConfig config = parseConfig(content);
             config.validate();
             return parseConfig(content);
@@ -27,35 +29,35 @@ public class WebConfigLoader {
             return null;
         }
     }
-    
+
     private static WebServerConfig parseConfig(String json) {
         WebServerConfig config = new WebServerConfig();
         json = json.trim();
-        
+
         if (!json.startsWith("{") || !json.endsWith("}")) {
             throw new IllegalArgumentException("Invalid JSON format");
         }
-        
+
         json = json.substring(1, json.length() - 1).trim();
         Map<String, String> sections = JsonParser.splitTopLevel(json);
-        
+
         if (sections.containsKey("timeouts")) {
             config.setTimeouts(parseTimeouts(sections.get("timeouts")));
         }
-        
+
         if (sections.containsKey("servers")) {
             config.setServers(parseServers(sections.get("servers")));
         }
-        
+
         return config;
     }
-    
+
     private static WebServerConfig.Timeouts parseTimeouts(String json) {
         WebServerConfig.Timeouts timeouts = new WebServerConfig.Timeouts();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         Map<String, String> fields = JsonParser.splitTopLevel(json);
-        
+
         if (fields.containsKey("headerMillis")) {
             timeouts.setHeaderMillis(ValueParsers.parseInt(fields.get("headerMillis")));
         }
@@ -65,34 +67,34 @@ public class WebConfigLoader {
         if (fields.containsKey("keepAliveMillis")) {
             timeouts.setKeepAliveMillis(ValueParsers.parseInt(fields.get("keepAliveMillis")));
         }
-        
+
         return timeouts;
     }
-    
+
     private static List<WebServerConfig.ServerBlock> parseServers(String json) {
         List<WebServerConfig.ServerBlock> servers = new ArrayList<>();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         List<String> serverJsons = JsonParser.splitArray(json);
-        
+
         for (String serverJson : serverJsons) {
             servers.add(parseServerBlock(serverJson));
         }
-        
+
         return servers;
     }
-    
+
     private static WebServerConfig.ServerBlock parseServerBlock(String json) {
         WebServerConfig.ServerBlock server = new WebServerConfig.ServerBlock();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         Map<String, String> fields = JsonParser.splitTopLevel(json);
-        
+
         if (fields.containsKey("name")) {
             server.setName(ValueParsers.parseString(fields.get("name")));
         }
         if (fields.containsKey("listen")) {
-            server.setListen(parseListenAddresses(fields.get("listen")));
+            server.setListen(parseListenAddress(fields.get("listen")));
         }
         if (fields.containsKey("serverNames")) {
             server.setServerNames(ValueParsers.parseStringArray(fields.get("serverNames")));
@@ -109,29 +111,16 @@ public class WebConfigLoader {
         if (fields.containsKey("routes")) {
             server.setRoutes(parseRoutes(fields.get("routes")));
         }
-        
+
         return server;
     }
-    
-    private static List<WebServerConfig.ListenAddress> parseListenAddresses(String json) {
-        List<WebServerConfig.ListenAddress> addresses = new ArrayList<>();
-        json = json.substring(1, json.length() - 1).trim();
-        
-        List<String> addrJsons = JsonParser.splitArray(json);
-        
-        for (String addrJson : addrJsons) {
-            addresses.add(parseListenAddress(addrJson));
-        }
-        
-        return addresses;
-    }
-    
+
     private static WebServerConfig.ListenAddress parseListenAddress(String json) {
         WebServerConfig.ListenAddress addr = new WebServerConfig.ListenAddress();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         Map<String, String> fields = JsonParser.splitTopLevel(json);
-        
+
         if (fields.containsKey("host")) {
             addr.setHost(ValueParsers.parseString(fields.get("host")));
         }
@@ -141,29 +130,29 @@ public class WebConfigLoader {
         if (fields.containsKey("default")) {
             addr.setDefault(ValueParsers.parseBoolean(fields.get("default")));
         }
-        
+
         return addr;
     }
-    
+
     private static List<WebServerConfig.Route> parseRoutes(String json) {
         List<WebServerConfig.Route> routes = new ArrayList<>();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         List<String> routeJsons = JsonParser.splitArray(json);
-        
+
         for (String routeJson : routeJsons) {
             routes.add(parseRoute(routeJson));
         }
-        
+
         return routes;
     }
-    
+
     private static WebServerConfig.Route parseRoute(String json) {
         WebServerConfig.Route route = new WebServerConfig.Route();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         Map<String, String> fields = JsonParser.splitTopLevel(json);
-        
+
         if (fields.containsKey("path")) {
             route.setPath(ValueParsers.parseString(fields.get("path")));
         }
@@ -188,16 +177,16 @@ public class WebConfigLoader {
         if (fields.containsKey("redirect")) {
             route.setRedirect(parseRedirect(fields.get("redirect")));
         }
-        
+
         return route;
     }
-    
+
     private static WebServerConfig.Upload parseUpload(String json) {
         WebServerConfig.Upload upload = new WebServerConfig.Upload();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         Map<String, String> fields = JsonParser.splitTopLevel(json);
-        
+
         if (fields.containsKey("enabled")) {
             upload.setEnabled(ValueParsers.parseBoolean(fields.get("enabled")));
         }
@@ -207,16 +196,16 @@ public class WebConfigLoader {
         if (fields.containsKey("fileField")) {
             upload.setFileField(ValueParsers.parseString(fields.get("fileField")));
         }
-        
+
         return upload;
     }
-    
+
     private static WebServerConfig.Cgi parseCgi(String json) {
         WebServerConfig.Cgi cgi = new WebServerConfig.Cgi();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         Map<String, String> fields = JsonParser.splitTopLevel(json);
-        
+
         if (fields.containsKey("enabled")) {
             cgi.setEnabled(ValueParsers.parseBoolean(fields.get("enabled")));
         }
@@ -226,23 +215,23 @@ public class WebConfigLoader {
         if (fields.containsKey("byExtension")) {
             cgi.setByExtension(ValueParsers.parseStringMap(fields.get("byExtension")));
         }
-        
+
         return cgi;
     }
-    
+
     private static WebServerConfig.Redirect parseRedirect(String json) {
         WebServerConfig.Redirect redirect = new WebServerConfig.Redirect();
         json = json.substring(1, json.length() - 1).trim();
-        
+
         Map<String, String> fields = JsonParser.splitTopLevel(json);
-        
+
         if (fields.containsKey("status")) {
             redirect.setStatus(ValueParsers.parseInt(fields.get("status")));
         }
         if (fields.containsKey("to")) {
             redirect.setTo(ValueParsers.parseString(fields.get("to")));
         }
-        
+
         return redirect;
     }
 }
