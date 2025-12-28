@@ -54,17 +54,7 @@ public class Server {
                     it.remove();
                     if (key.isAcceptable()) {
                         handleAccept(key);
-                    } else if (key.isReadable()) {
-
-                        // SocketChannel client = (SocketChannel) key.channel();
-                        // ByteBuffer buffer = ByteBuffer.allocate(1024);
-                        // client.read(buffer);
-                        // String response = "HTTP/1.1 201 OK\r\n"
-                        //         + "Content-Length: 5\r\n"
-                        //         + "\r\n"
-                        //         + "Hello omar & simo from soufian";
-                        // client.write(ByteBuffer.wrap(response.getBytes()));
-                        // client.close();
+                    } else if (key.isReadable()) { 
                         handleRead(key);
                     } else if (key.isWritable()) {
                         handleWrite(key);
@@ -92,7 +82,7 @@ public class Server {
                 var srv = (config.model.WebServerConfig.ServerBlock) key.attachment();
                 // register client and attach a ConnectionHandler to manage I/O
                 SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
-                ConnectionHandler handler = new ConnectionHandler(clientChannel, clientKey);
+                ConnectionHandler handler = new ConnectionHandler(clientChannel, clientKey, srv);
                 clientKey.attach(handler);
                 // Create ConnectionHandler and attach to client's key
             } catch (IOException e) {

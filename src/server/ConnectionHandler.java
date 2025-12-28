@@ -17,6 +17,7 @@ public class ConnectionHandler {
 
     private final SocketChannel channel;
     private final SelectionKey key;
+    private final WebServerConfig.ServerBlock serverBlock;
     private final ByteBuffer readBuffer;
     private final ByteBuffer writeBuffer;
     private final long createdAt;
@@ -82,9 +83,10 @@ public class ConnectionHandler {
         return (request.length() - bodyStart) >= contentLength;
     }
 
-    public ConnectionHandler(SocketChannel channel, SelectionKey key) {
+    public ConnectionHandler(SocketChannel channel, SelectionKey key, WebServerConfig.ServerBlock serverBlock) {
         this.channel = channel;
         this.key = key;
+        this.serverBlock = serverBlock;
         this.readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
         this.writeBuffer = ByteBuffer.allocate(BUFFER_SIZE);
         this.createdAt = System.currentTimeMillis();
@@ -212,9 +214,9 @@ public class ConnectionHandler {
 
     public void processRequest() {
         Logger.info(TAG, "Processing request from " + getRemoteAddress());
-        WebServerConfig.ServerBlock serverBlock = (WebServerConfig.ServerBlock) key.attachment();
-        if (serverBlock == null) {
+         if (serverBlock == null) {
             sendErrorResponse(500, "Server configuration missing");
+            return;
         }
         // DEBUG: Print the complete request
         System.out.println("=== DEBUG: Complete Request ===");
