@@ -17,29 +17,17 @@ import java.util.Set;
 public class Server {
 
     private static final SonicLogger logger = SonicLogger.getLogger(Server.class);
-    private static final int SERVER_BACKLOG = 1024;
 
     private final WebServerConfig config;
     private final Map<Integer, ServerSocketChannel> serverChannels = new HashMap<>();
     
-    private volatile boolean running = false;
     private Selector selector;
 
     public Server(WebServerConfig config) {
-        if (config == null || config.getServers() == null || config.getServers().isEmpty()) {
-            throw new IllegalArgumentException("Invalid server configuration");
-        }
         this.config = config;
     }
 
     public void start() {
-        if (running) {
-            logger.warn("Server is already running");
-            return;
-        }
-        
-        running = true;
-
         try {
             selector = Selector.open();
             registerShutdownHook();
@@ -57,9 +45,7 @@ public class Server {
         }
     }
 
-    private void bindAllServers() throws IOException {
-        logger.info("Binding " + config.getServers().size() + " server(s)");
-        
+    private void bindAllServers() throws IOException {        
         Set<String> boundAddresses = new HashSet<>();
         
         try {
@@ -78,11 +64,6 @@ public class Server {
         for (WebServerConfig.ListenAddress addr : serverBlock.getListen()) {
             String addressKey = addr.getHost() + ":" + addr.getPort();
             
-            if (boundAddresses.contains(addressKey)) {
-                logger.warn("Skipping duplicate address: " + addressKey);
-                continue;
-            }
-            
             bindSingleServer(addr, serverBlock);
             boundAddresses.add(addressKey);
         }
@@ -99,7 +80,7 @@ public class Server {
             channel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
             channel.setOption(StandardSocketOptions.SO_RCVBUF, 128 * 1024);
             
-            channel.bind(new InetSocketAddress(addr.getHost(), addr.getPort()), SERVER_BACKLOG);
+            channel.bind(new InetSocketAddress(addr.getHost(), addr.getPort()));
             channel.register(selector, SelectionKey.OP_ACCEPT, serverBlock);
             
             serverChannels.put(addr.getPort(), channel);
@@ -123,11 +104,6 @@ public class Server {
     }
 
     public void shutdown() {
-        if (!running) {
-            return;
-        }
-        
-        running = false;
         logger.info("Shutting down server...");
         
         if (selector != null && selector.isOpen()) {
@@ -177,13 +153,5 @@ public class Server {
         } catch (IOException e) {
             logger.error("Error closing channel", e);
         }
-    }
-
-    public boolean isRunning() {
-        return running;
-    }
-
-    public int getActiveListenerCount() {
-        return serverChannels.size();
     }
 }
