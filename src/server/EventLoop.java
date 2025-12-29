@@ -10,23 +10,21 @@ public class EventLoop {
     private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
 
     public static void loop(Selector selector) throws IOException {
-
         while (true) {
+            // Wait for events to happen
             selector.select();
-            Iterator<SelectionKey> it = selector.selectedKeys().iterator();
 
-            while (it.hasNext()) {
-                SelectionKey key = it.next();
-                it.remove();
+            // Get all events that happened
+            Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
+
+            while (keys.hasNext()) {
+                SelectionKey key = keys.next();
+                keys.remove(); // Must remove after getting it
 
                 try {
+                    // Handle different types of events
                     if (key.isAcceptable()) {
                         handleAccept(key, selector);
-                        // log acceptance
-                        try {
-                            // remote address unknown until we accept; handler logs remote when created
-                            logger.debug("New incoming connection on server socket");
-                        } catch (Exception ignore) {}
                     }
                     if (key.isReadable()) {
                         handleRead(key);
@@ -35,7 +33,7 @@ public class EventLoop {
                         handleWrite(key);
                     }
                 } catch (IOException e) {
-                    logger.error("Error handling connection", e);
+                    System.err.println("Error: " + e.getMessage());
                     key.cancel();
                     key.channel().close();
                 }
@@ -43,29 +41,23 @@ public class EventLoop {
         }
     }
 
-    private static void handleAccept(SelectionKey key, Selector selector) {
-        if (key.channel() instanceof ServerSocketChannel serverChannel) {
-            try {
-                var clientChannel = serverChannel.accept();
-                if (clientChannel == null) {
-                    return;
-                }
-                // Configure the client channel to be non-blocking
-                clientChannel.configureBlocking(false);
-                clientChannel.socket().setKeepAlive(true);
-                clientChannel.socket().setTcpNoDelay(true);
-                // Register the client channel with the selector for read operations
-                // get server config attached to server socket key
-                var srv = (config.model.WebServerConfig.ServerBlock) key.attachment();
-                // register client and attach a ConnectionHandler to manage I/O
-                SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
-                ConnectionHandler handler = new ConnectionHandler(clientChannel, clientKey, srv);
-                clientKey.attach(handler);
-                // Create ConnectionHandler and attach to client's key
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+    private static void handleAccept(SelectionKey key, Selector selector) throws IOException {
+        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
+        SocketChannel clientChannel = serverChannel.accept();
+
+        if (clientChannel == null)
+            return;
+
+        // Configure client channel
+        clientChannel.configureBlocking(false);
+        clientChannel.socket().setTcpNoDelay(true); // Send data immediately
+
+        // Register for READ events and attach a Handler
+        SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
+        ConnectionHandler handler = new ConnectionHandler(clientChannel);
+        clientKey.attach(handler); // Attach handler to the key
+
+        System.out.println("Client connected: " + clientChannel.getRemoteAddress());
     }
 
     private static void handleRead(SelectionKey key) throws IOException {
@@ -75,32 +67,15 @@ public class EventLoop {
             return;
         }
 
-        SocketChannel channel = (SocketChannel) key.channel();
-        try {
-            boolean readComplete = handler.read();
-            if (readComplete) {
-                handler.setState(ConnectionHandler.State.PROCESSING);
+        // Read data from client
+        boolean readComplete = handler.read();
 
-                try {
-                    // Process the request
-                    handler.processRequest();
+        if (readComplete) {
+            // Process the request
+            handler.processRequest();
 
-                    // Change interest to write so selector will notify when writable
-                    key.interestOps(SelectionKey.OP_WRITE);
-                } catch (Exception e) {
-                    logger.error("Error processing request: " + e.getMessage(), e);
-                    handler.sendErrorResponse(500, "Internal Server Error");
-                    key.interestOps(SelectionKey.OP_WRITE);
-                }
-            }
-
-        } catch (IOException e) {
-            logger.debug("Client disconnected: " + e.getMessage());
-            try {
-                channel.close();
-            } catch (IOException ignore) {
-            }
-            key.cancel();
+            // Switch to WRITE mode - we're ready to send response
+            key.interestOps(SelectionKey.OP_WRITE);
         }
     }
 
