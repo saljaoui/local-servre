@@ -20,11 +20,10 @@ public class Router {
     public HttpResponse routeRequest(HttpRequest request) {
         Route route = routerMatch(request);
 
-        // if (route == null) {
-        //     // No route matched → 404
-        //     // return errorHandler.notFound();
-        //     return null;
-        // }
+        if (route == null) {
+            // No route matched → return default response to prevent NPE
+            return new HttpResponse();
+        }
 
         // 2. Dispatch to the correct handler
         switch (route.getType()) {
