@@ -1,6 +1,7 @@
 package server;
 
 import config.model.WebServerConfig;
+import http.HttpParser;
 import http.HttpRequest;
 import http.HttpResponse;
 import routing.Dispatcher;
@@ -34,7 +35,7 @@ public class ConnectionHandler {
     private int responsePosition;
     private boolean writeComplete;
     private final Dispatcher dispatcher = new Dispatcher();
-
+    private final HttpParser httpParser = new HttpParser();
     public enum State {
         READING_REQUEST,
         PROCESSING,
@@ -52,7 +53,6 @@ public class ConnectionHandler {
         this.lastActivity = createdAt;
         this.state = State.READING_REQUEST;
         this.requestData = new StringBuilder();
-
         logger.debug("New connection from: " + getRemoteAddress());
     }
 
@@ -124,7 +124,7 @@ public class ConnectionHandler {
         int headerEnd = requestData.indexOf("\r\n\r\n");
         if (headerEnd != -1) {
             String headersPart = requestData.substring(0, headerEnd);
-            logger.debug("Received headers:\n" + headersPart);
+            // logger.debug("Received headers:\n" + headersPart);
             String startLine = headersPart.split("\r\n", 2)[0];
             logger.debug("Start-line: " + startLine);
         }
@@ -216,60 +216,35 @@ public class ConnectionHandler {
     }
 
 
-    public void processRequest() {
+    public  void processRequest() {
         logger.info("Processing request from " + getRemoteAddress());
-
-        HttpRequest request = new HttpRequest();
-        String raw = requestData.toString();
-        // logger.debug("Request start-line: " + raw);
-        System.out.println(" raw "+raw);
-
-        // try {
-        //     String firstLine = raw.substring(0, raw.indexOf("\r\n"));
-        //     logger.debug("Request start-line: " + firstLine);
-        //     String[] parts = firstLine.split(" ");
-        //     request.setMethod(parts[0]);
-        //     request.setUri(parts[1]);
-        //     String uri = request.getUri();
-        //     int queryIdx = uri.indexOf('?');
-        //     if (queryIdx > -1) {
-        //         request.setPath(uri.substring(0, queryIdx));
-        //         request.setQueryString(uri.substring(queryIdx + 1));
-        //         logger.debug("QueryString: " + request.getQueryString());
-        //         String[] pairs = request.getQueryString().split("&");
-        //         for (String pair : pairs) {
-        //             String[] kv = pair.split("=");
-        //             if (kv.length == 2)
-        //                 request.setParameter(kv[0], kv[1]);
-        //         }
-        //     } else {
-        //         request.setPath(uri);
-        //         request.setQueryString("");
-        //     }
-
-        // } catch (Exception e) {
-        //     // handle exception
-        // }
+        System.out.println("*-- HTTP Request Start ---*");
         // ==========================================
         // STEP 2: PREPARE RESPONSE CONTAINER
         // ==========================================
+        HttpRequest request = null;
+        try {
+            request = httpParser.processRequest(requestData);
+        } catch (Exception e) {
+             e.printStackTrace();
+        }
         HttpResponse response = new HttpResponse();
 
         // ==========================================
         // STEP 3: DISPATCH (Dynamic Logic)
         // ==========================================
-        // boolean handledByServlet = dispatcher.dispatch(request, response);
+        boolean handledByServlet = dispatcher.dispatch(request, response);
 
-        // // ==========================================
-        // // STEP 4: FALLBACK (Static Files)
-        // // ==========================================
-        // if (!handledByServlet) {
-        //     // If no Servlet handled it, try to serve a file from your config
-        //     // ... (Use your existing logic to serve ./www/main/index.html here) ...
-        //     // For now, just 404 if no servlet matches
-        //     response.setStatus(404);
-        //     response.write("<h1>404 Not Found</h1><p>No servlet found for: " + request.getPath() + "</p>");
-        // }
+        // ==========================================
+        // STEP 4: FALLBACK (Static Files)
+        // ==========================================
+        if (!handledByServlet) {
+            // If no Servlet handled it, try to serve a file from your config
+            // ... (Use your existing logic to serve ./www/main/index.html here) ...
+            // For now, just 404 if no servlet matches
+            response.setStatus(404);
+            response.write("<h1>404 Not Found</h1><p>No servlet found for: " + request.getPath() + "</p>");
+        }
 
         // ==========================================
         // STEP 5: PREPARE FOR NIO WRITE

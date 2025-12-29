@@ -28,9 +28,11 @@ public class EventLoop {
                             logger.debug("New incoming connection on server socket");
                         } catch (Exception ignore) {}
                     }
+                    if (!key.isValid()) continue;
                     if (key.isReadable()) {
                         handleRead(key);
                     }
+                    if (!key.isValid()) continue;
                     if (key.isWritable()) {
                         handleWrite(key);
                     }
@@ -80,16 +82,12 @@ public class EventLoop {
             boolean readComplete = handler.read();
             if (readComplete) {
                 handler.setState(ConnectionHandler.State.PROCESSING);
-
                 try {
-                    // Process the request
                     handler.processRequest();
-
-                    // Change interest to write so selector will notify when writable
                     key.interestOps(SelectionKey.OP_WRITE);
                 } catch (Exception e) {
                     logger.error("Error processing request: " + e.getMessage(), e);
-                    handler.sendErrorResponse(500, "Internal Server Error");
+                    try { handler.sendErrorResponse(500, "Internal Server Error"); } catch (Exception ignore) {}
                     key.interestOps(SelectionKey.OP_WRITE);
                 }
             }
