@@ -1,5 +1,6 @@
 package routing;
 
+import handlers.ErrorHandler;
 import handlers.StaticHandler;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
@@ -9,12 +10,12 @@ public class Router {
 
     private StaticHandler staticHandler;
     // private CGIHandler cgiHandler;
-    // private ErrorHandler errorHandler;
+    private ErrorHandler errorHandler;
 
     public Router() {
         this.staticHandler = new StaticHandler();
         // this.cgiHandler = new CGIHandler();
-        // this.errorHandler = new ErrorHandler();
+        this.errorHandler = new ErrorHandler();
     }
 
     public HttpResponse routeRequest(HttpRequest request) {
@@ -22,7 +23,7 @@ public class Router {
 
         if (route == null) {
             // No route matched → return default response to prevent NPE
-            return new HttpResponse();
+            return errorHandler.notFound();
         }
 
         // 2. Dispatch to the correct handler
