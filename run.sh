@@ -4,15 +4,18 @@
 # ║                         SonicServe Launch Script                             ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
-# Change to project root
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR" || exit 1
+set -e  # Exit on error
 
-# Colors (matching SonicLogger style)
+# Navigate to project root
+cd "$(dirname "$0")" || exit 1
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Colors
+# ─────────────────────────────────────────────────────────────────────────────────
+
 RESET='\033[0m'
 BOLD='\033[1m'
 DIM='\033[2m'
-GRAY='\033[38;5;242m'
 CYAN='\033[38;5;39m'
 BRIGHT_CYAN='\033[38;5;51m'
 GREEN='\033[38;5;46m'
@@ -20,7 +23,7 @@ YELLOW='\033[38;5;226m'
 RED='\033[38;5;196m'
 PURPLE='\033[38;5;147m'
 
-# Sonic gradient colors
+# Sonic gradient colors (for logo)
 SONIC_BLUE_1='\033[38;5;27m'
 SONIC_BLUE_2='\033[38;5;33m'
 SONIC_BLUE_3='\033[38;5;39m'
@@ -50,133 +53,113 @@ print_sonic_logo() {
     echo ""
 }
 
-log_info() {
-    echo -e "${BOLD}${BRIGHT_CYAN}INFO${RESET}    ${GRAY}[shutdown]${RESET} : $1"
+log_step() {
+    echo -e "${BOLD}${BRIGHT_CYAN}[$1]${RESET} ${PURPLE}$2${RESET}"
 }
 
-log_success() {
-    echo -e "${BOLD}${GREEN}SUCCESS${RESET} ${GRAY}[shutdown]${RESET} : $1"
+log_ok() {
+    echo -e "  ${GREEN}✓${RESET} $1"
+}
+
+log_info() {
+    echo -e "  ${CYAN}ℹ${RESET} ${DIM}$1${RESET}"
 }
 
 log_error() {
-    echo -e "${BOLD}${RED}ERROR${RESET}   ${GRAY}[shutdown]${RESET} : $1"
+    echo -e "  ${RED}✗${RESET} $1"
 }
 
+divider() {
+    echo -e "${DIM}${CYAN}  ─────────────────────────────────────────────────────────────────────────────${RESET}"
+}
+
+print_goodbye() {
+    echo ""
+    echo -e "${BOLD}${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${BOLD}${BRIGHT_CYAN}                    Thank you for using SonicServe!${RESET}"
+    echo -e "${DIM}${CYAN}                  Server stopped. See you next time! ⚡${RESET}"
+    echo -e "${BOLD}${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo ""
+}
+
+trap print_goodbye EXIT
+
 # ─────────────────────────────────────────────────────────────────────────────────
-# BUILD PROCESS
+# Main Build Process
 # ─────────────────────────────────────────────────────────────────────────────────
 
 clear
 echo ""
-echo -e "${BOLD}${BRIGHT_CYAN}    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${BOLD}${BRIGHT_CYAN}                          SONICSERVE BUILD SYSTEM${RESET}"
-echo -e "${BOLD}${BRIGHT_CYAN}    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}${BRIGHT_CYAN}                      SONICSERVE BUILD SYSTEM${RESET}"
+echo -e "${BOLD}${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo ""
 
-echo -e "${BOLD}${BRIGHT_CYAN}[1/3]${RESET} ${PURPLE}Checking Dependencies${RESET}"
-echo -e "${DIM}${CYAN}    ─────────────────────────────────────────────────────────────────────────────${RESET}"
+# Step 1: Dependencies
+log_step "1/3" "Checking Dependencies"
+divider
 
-# Check Java compiler
 if ! command -v javac &> /dev/null; then
-    echo -e "${RED}       [FAIL]${RESET} Java compiler (javac) not found!"
-    echo -e "${CYAN}       [INFO]${RESET}  ${DIM}Please install JDK 8 or higher${RESET}"
+    log_error "Java compiler (javac) not found"
+    log_info "Install JDK 8 or higher"
     exit 1
 fi
-JAVAC_VERSION=$(javac -version 2>&1 | awk '{print $2}')
-echo -e "${GREEN}       [OK]${RESET} Java compiler ready (version ${JAVAC_VERSION})"
+log_ok "Java compiler $(javac -version 2>&1 | awk '{print $2}')"
 
-# Check Java runtime
 if ! command -v java &> /dev/null; then
-    echo -e "${RED}       [FAIL]${RESET} Java runtime (java) not found!"
-    echo -e "${CYAN}       [INFO]${RESET}  ${DIM}Please install JRE 8 or higher${RESET}"
+    log_error "Java runtime (java) not found"
+    log_info "Install JRE 8 or higher"
     exit 1
 fi
-JAVA_VERSION=$(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}')
-echo -e "${GREEN}       [OK]${RESET} Java runtime ready (version ${JAVA_VERSION})"
+log_ok "Java runtime $(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}')"
 
 echo ""
-echo -e "${BOLD}${BRIGHT_CYAN}[2/3]${RESET} ${PURPLE}Building Project${RESET}"
-echo -e "${DIM}${CYAN}    ─────────────────────────────────────────────────────────────────────────────${RESET}"
 
-# Clean build
-if [ -d "build" ]; then
-    rm -rf build
-    echo -e "${CYAN}       [INFO]${RESET}  ${DIM}Cleaned previous build${RESET}"
-fi
+# Step 2: Build
+log_step "2/3" "Building Project"
+divider
 
-# Create directories
+[ -d "build" ] && rm -rf build && log_info "Cleaned previous build"
 mkdir -p build cgi-bin error_pages www uploads
-echo -e "${GREEN}       [OK]${RESET} Build directory created"
 
-# Compile
-echo -e "${CYAN}       [INFO]${RESET}  ${DIM}Compiling source files...${RESET}"
-SOURCE_FILES=$(find src -name "*.java")
-COMPILE_OUTPUT=$(javac -d build ${SOURCE_FILES} 2>&1)
-
-if [ $? -ne 0 ]; then
-    echo ""
-    echo -e "${RED}       [FAIL]${RESET} Compilation failed!"
-    echo -e "${DIM}${COMPILE_OUTPUT}${RESET}"
+log_info "Compiling source files..."
+if javac -d build $(find src -name "*.java") 2>&1; then
+    log_ok "Compiled $(find build -name "*.class" | wc -l) class files"
+else
+    log_error "Compilation failed"
     exit 1
 fi
 
-COMPILED_COUNT=$(find build -name "*.class" | wc -l)
-echo -e "${GREEN}       [OK]${RESET} Successfully compiled ${COMPILED_COUNT} class files"
-
 echo ""
-echo -e "${BOLD}${BRIGHT_CYAN}[3/3]${RESET} ${PURPLE}Verifying Environment${RESET}"
-echo -e "${DIM}${CYAN}    ─────────────────────────────────────────────────────────────────────────────${RESET}"
 
-# Check config
+# Step 3: Environment
+log_step "3/3" "Verifying Environment"
+divider
+
 if [ ! -f "config/config.json" ]; then
-    echo -e "${RED}       [FAIL]${RESET} Configuration file not found at config/config.json"
-    echo -e "${CYAN}       [INFO]${RESET}  ${DIM}Please create a valid config.json file${RESET}"
+    log_error "config/config.json not found"
     exit 1
 fi
-echo -e "${GREEN}       [OK]${RESET} Configuration file found"
+log_ok "Configuration file found"
 
-# Check directories
-DIRS=("cgi-bin" "error_pages" "www" "uploads")
-for dir in "${DIRS[@]}"; do
-    if [ ! -d "$dir" ]; then
-        mkdir -p "$dir"
-        echo -e "${CYAN}       [INFO]${RESET}  ${DIM}Created directory: ${dir}/${RESET}"
-    fi
+for dir in cgi-bin error_pages www uploads; do
+    [ ! -d "$dir" ] && mkdir -p "$dir"
 done
-echo -e "${GREEN}       [OK]${RESET} All required directories ready"
+log_ok "All directories ready"
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# LAUNCH SERVER
+# Launch
 # ─────────────────────────────────────────────────────────────────────────────────
 
 echo ""
-echo -e "${BOLD}${BRIGHT_CYAN}    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo ""
-echo -e "${DIM}       Press ${BOLD}${YELLOW}Ctrl+C${RESET}${DIM} to stop the server${RESET}"
+echo -e "${DIM}  Press ${BOLD}${YELLOW}Ctrl+C${RESET}${DIM} to stop the server${RESET}"
 echo ""
 print_sonic_logo
-echo -e "${BOLD}${BRIGHT_CYAN}     Server is now running...${RESET}"
+echo -e "${BOLD}${BRIGHT_CYAN}    Server is now running...${RESET}"
 echo ""
-echo -e "${BOLD}${BRIGHT_CYAN}    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}${BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo ""
 
-# Launch server (ONLY ONCE!)
 java -cp build Main "$@"
-SERVER_EXIT_CODE=$?
-
-# ─────────────────────────────────────────────────────────────────────────────────
-# SHUTDOWN SEQUENCE
-# ─────────────────────────────────────────────────────────────────────────────────
-
-echo ""
-echo -e "${BOLD}${BRIGHT_CYAN}    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-
-if [ $SERVER_EXIT_CODE -eq 0 ]; then
-    log_success "Server shutdown complete"
-else
-    log_error "Server terminated with exit code ${SERVER_EXIT_CODE}"
-fi
-
-echo -e "${BOLD}${BRIGHT_CYAN}    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${BOLD}${BRIGHT_CYAN}                           Thank you for using SonicServe!${RESET}"
-echo ""

@@ -3,6 +3,7 @@ package http;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 
+import http.model.HttpRequest;
 import util.SonicLogger;
 
 public class HttpParser {
@@ -54,7 +55,7 @@ public class HttpParser {
             return;
         String name = line.substring(0, colonIndex);
         String value = line.substring(colonIndex + 1).trim();
-        request.addHeader(name, value);
+        request.setHeaders(name, value);
         logger.debug("Header added: " + name + "=" + value);
         if (name.equalsIgnoreCase("Cookie")) {
             // here parsCookie

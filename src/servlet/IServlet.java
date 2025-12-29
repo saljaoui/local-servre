@@ -2,8 +2,8 @@ package servlet;
 
 import java.io.IOException;
 
-import http.HttpRequest;
-import http.HttpResponse;
+import http.model.HttpRequest;
+import http.model.HttpResponse;
 
 public interface IServlet {
 
