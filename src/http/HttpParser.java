@@ -10,7 +10,7 @@ public class HttpParser {
     private static final SonicLogger logger = SonicLogger.getLogger(HttpParser.class);
     private static final String HEADER_SEPARATOR = "\r\n\r\n";
 
-    public   HttpRequest processRequest(StringBuilder requestData) throws Exception {
+    public static HttpRequest processRequest(String requestData) throws Exception {
         logger.info("Processing request");
 
         HttpRequest request = new HttpRequest();
@@ -28,7 +28,8 @@ public class HttpParser {
         String bodySection = raw.substring(headerEndIndex + 4);// The data part (might be empty)
 
         logger.debug("Header end index=" + headerEndIndex + " body length=" + bodySection.length());
-        logger.debug("Header section preview: " + (headerSection.length() > 200 ? headerSection.substring(0,200)+"..." : headerSection));
+        logger.debug("Header section preview: "
+                + (headerSection.length() > 200 ? headerSection.substring(0, 200) + "..." : headerSection));
 
         String[] linesHeader = headerSection.split("\r\n");
         // Line 0 is always the Request Line (GET / HTTP/1.1)
@@ -96,7 +97,8 @@ public class HttpParser {
         // 2 save URI (the path +query)
         String uri = parts[1];
         request.setUri(uri);
-        logger.debug("Request line parts: method=" + parts[0] + " uri=" + uri + " protocol=" + (parts.length>2?parts[2]:""));
+        logger.debug("Request line parts: method=" + parts[0] + " uri=" + uri + " protocol="
+                + (parts.length > 2 ? parts[2] : ""));
         // 3. Check for Query String (The ?name=alice part)
         int questionMarkIndex = uri.indexOf("?");
         if (questionMarkIndex != -1) {

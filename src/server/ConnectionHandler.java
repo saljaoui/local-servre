@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
+import http.HttpParser;
 import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
@@ -46,52 +47,57 @@ public class ConnectionHandler {
         return request.contains("\r\n\r\n");
     }
 
-// Process the HTTP request and prepare response
-public void dispatchRequest() {
-    System.out.println("Processing request...");
+    // Process the HTTP request and prepare response
+    public void dispatchRequest() {
+        System.out.println("Processing request...");
 
-    // 1. Parse the request
-    httpRequest = ParseRequest.parseRequest(request);
+        // 1. Parse the request
+        try {
+            httpRequest = HttpParser.processRequest(request);
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
 
-    // 2. Route the request to get a proper HttpResponse
-    httpResponse = router.routeRequest(httpRequest);
+        // 2. Route the request to get a proper HttpResponse
+        httpResponse = router.routeRequest(httpRequest);
 
-    // 3. Build raw HTTP response bytes from HttpResponse object
-    StringBuilder responseBuilder = new StringBuilder();
+        // 3. Build raw HTTP response bytes from HttpResponse object
+        StringBuilder responseBuilder = new StringBuilder();
 
-    // Status line
-    responseBuilder.append("HTTP/1.1 ")
-                   .append(httpResponse.getStatusCode())
-                   .append(" ")
-                   .append(httpResponse.getStatusMessage())
-                   .append("\r\n");
+        // Status line
+        responseBuilder.append("HTTP/1.1 ")
+                .append(httpResponse.getStatusCode())
+                .append(" ")
+                .append(httpResponse.getStatusMessage())
+                .append("\r\n");
 
-    // Headers
-    if (httpResponse.getHeaders() != null) {
-        httpResponse.getHeaders().forEach((k, v) -> {
-            responseBuilder.append(k).append(": ").append(v).append("\r\n");
-        });
+        // Headers
+        if (httpResponse.getHeaders() != null) {
+            httpResponse.getHeaders().forEach((k, v) -> {
+                responseBuilder.append(k).append(": ").append(v).append("\r\n");
+            });
+        }
+
+        // Add Content-Length if not already set
+        if (!httpResponse.getHeaders().containsKey("Content-Length")) {
+            int length = httpResponse.getBody() != null ? httpResponse.getBody().length : 0;
+            responseBuilder.append("Content-Length: ").append(length).append("\r\n");
+        }
+
+        // End headers
+        responseBuilder.append("\r\n");
+
+        // Body
+        byte[] body = httpResponse.getBody() != null ? httpResponse.getBody() : new byte[0];
+        byte[] headerBytes = responseBuilder.toString().getBytes();
+
+        // Combine headers + body into writeBuffer
+        writeBuffer = ByteBuffer.allocate(headerBytes.length + body.length);
+        writeBuffer.put(headerBytes);
+        writeBuffer.put(body);
+        writeBuffer.flip(); // Prepare buffer for writing
     }
-
-    // Add Content-Length if not already set
-    if (!httpResponse.getHeaders().containsKey("Content-Length")) {
-        int length = httpResponse.getBody() != null ? httpResponse.getBody().length : 0;
-        responseBuilder.append("Content-Length: ").append(length).append("\r\n");
-    }
-
-    // End headers
-    responseBuilder.append("\r\n");
-
-    // Body
-    byte[] body = httpResponse.getBody() != null ? httpResponse.getBody() : new byte[0];
-    byte[] headerBytes = responseBuilder.toString().getBytes();
-    
-    // Combine headers + body into writeBuffer
-    writeBuffer = ByteBuffer.allocate(headerBytes.length + body.length);
-    writeBuffer.put(headerBytes);
-    writeBuffer.put(body);
-    writeBuffer.flip(); // Prepare buffer for writing
-}
 
     // READ YOUR HTML FILE - This loads index.html
     private String buildYourHtml() {
