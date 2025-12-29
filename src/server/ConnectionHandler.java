@@ -141,8 +141,8 @@ public class ConnectionHandler {
         // String responseString = new String(responseData, StandardCharsets.UTF_8);
         // System.out.println("test ConnectionHandler.write() " + responseString);
         if (responseData == null) {
-            prepareResponse();
         }
+        prepareResponse();
 
         // Write as much as possible
         int remaining = responseData.length - responsePosition;
@@ -172,7 +172,8 @@ public class ConnectionHandler {
      */
     private void prepareResponse() {
         // For now, just return a simple HTTP response
-        String response = "HTTP/1.1 200 OK\r\n"
+        String response = 
+                "HTTP/1.1 200 OK\r\n"
                 + "Content-Type: text/plain\r\n"
                 + "Content-Length: 13\r\n"
                 + "Connection: " + (shouldKeepAlive() ? "keep-alive" : "close") + "\r\n"
@@ -220,32 +221,35 @@ public class ConnectionHandler {
 
         HttpRequest request = new HttpRequest();
         String raw = requestData.toString();
-        try {
-            String firstLine = raw.substring(0, raw.indexOf("\r\n"));
-            logger.debug("Request start-line: " + firstLine);
-            String[] parts = firstLine.split(" ");
-            request.setMethod(parts[0]);
-            request.setUri(parts[1]);
-            String uri = request.getUri();
-            int queryIdx = uri.indexOf('?');
-            if (queryIdx > -1) {
-                request.setPath(uri.substring(0, queryIdx));
-                request.setQueryString(uri.substring(queryIdx + 1));
-                logger.debug("QueryString: " + request.getQueryString());
-                String[] pairs = request.getQueryString().split("&");
-                for (String pair : pairs) {
-                    String[] kv = pair.split("=");
-                    if (kv.length == 2)
-                        request.setParameter(kv[0], kv[1]);
-                }
-            } else {
-                request.setPath(uri);
-                request.setQueryString("");
-            }
+        // logger.debug("Request start-line: " + raw);
+        System.out.println(" raw "+raw);
 
-        } catch (Exception e) {
-            // handle exception
-        }
+        // try {
+        //     String firstLine = raw.substring(0, raw.indexOf("\r\n"));
+        //     logger.debug("Request start-line: " + firstLine);
+        //     String[] parts = firstLine.split(" ");
+        //     request.setMethod(parts[0]);
+        //     request.setUri(parts[1]);
+        //     String uri = request.getUri();
+        //     int queryIdx = uri.indexOf('?');
+        //     if (queryIdx > -1) {
+        //         request.setPath(uri.substring(0, queryIdx));
+        //         request.setQueryString(uri.substring(queryIdx + 1));
+        //         logger.debug("QueryString: " + request.getQueryString());
+        //         String[] pairs = request.getQueryString().split("&");
+        //         for (String pair : pairs) {
+        //             String[] kv = pair.split("=");
+        //             if (kv.length == 2)
+        //                 request.setParameter(kv[0], kv[1]);
+        //         }
+        //     } else {
+        //         request.setPath(uri);
+        //         request.setQueryString("");
+        //     }
+
+        // } catch (Exception e) {
+        //     // handle exception
+        // }
         // ==========================================
         // STEP 2: PREPARE RESPONSE CONTAINER
         // ==========================================
@@ -254,18 +258,18 @@ public class ConnectionHandler {
         // ==========================================
         // STEP 3: DISPATCH (Dynamic Logic)
         // ==========================================
-        boolean handledByServlet = dispatcher.dispatch(request, response);
+        // boolean handledByServlet = dispatcher.dispatch(request, response);
 
-        // ==========================================
-        // STEP 4: FALLBACK (Static Files)
-        // ==========================================
-        if (!handledByServlet) {
-            // If no Servlet handled it, try to serve a file from your config
-            // ... (Use your existing logic to serve ./www/main/index.html here) ...
-            // For now, just 404 if no servlet matches
-            response.setStatus(404);
-            response.write("<h1>404 Not Found</h1><p>No servlet found for: " + request.getPath() + "</p>");
-        }
+        // // ==========================================
+        // // STEP 4: FALLBACK (Static Files)
+        // // ==========================================
+        // if (!handledByServlet) {
+        //     // If no Servlet handled it, try to serve a file from your config
+        //     // ... (Use your existing logic to serve ./www/main/index.html here) ...
+        //     // For now, just 404 if no servlet matches
+        //     response.setStatus(404);
+        //     response.write("<h1>404 Not Found</h1><p>No servlet found for: " + request.getPath() + "</p>");
+        // }
 
         // ==========================================
         // STEP 5: PREPARE FOR NIO WRITE

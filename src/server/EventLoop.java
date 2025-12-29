@@ -21,9 +21,9 @@ public class EventLoop {
 
                 try {
                     if (key.isAcceptable()) {
-                        handleAccept(key, selector);
                         // log acceptance
                         try {
+                            handleAccept(key, selector);
                             // remote address unknown until we accept; handler logs remote when created
                             logger.debug("New incoming connection on server socket");
                         } catch (Exception ignore) {}

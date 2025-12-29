@@ -6,9 +6,9 @@ import java.util.Map;
 
 import http.HttpRequest;
 import http.HttpResponse;
-import http.IServlet;
-import http.Servlet;
 import server.ConnectionHandler;
+import servlet.IServlet;
+import servlet.Servlet;
 
 public class Dispatcher {
     private final Map<String, IServlet> servletRegistry = new HashMap<>();

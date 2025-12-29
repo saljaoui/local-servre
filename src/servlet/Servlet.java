@@ -1,8 +1,12 @@
-package http;
+package servlet;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+
+import http.HttpRequest;
+import http.HttpResponse;
+import http.TemplateEngine;
 
 public class Servlet implements IServlet {
 
