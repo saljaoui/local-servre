@@ -1,5 +1,6 @@
 package routing;
 
+import config.model.WebServerConfig.ServerBlock;
 import handlers.ErrorHandler;
 import handlers.StaticHandler;
 import http.model.HttpRequest;
@@ -18,7 +19,7 @@ public class Router {
         this.errorHandler = new ErrorHandler();
     }
 
-    public HttpResponse routeRequest(HttpRequest request) {
+    public HttpResponse routeRequest(HttpRequest request, ServerBlock server) {
         Route route = routerMatch(request);
 
         if (route == null) {
