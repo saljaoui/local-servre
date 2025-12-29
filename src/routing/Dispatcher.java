@@ -4,10 +4,10 @@ package routing;
 import java.util.HashMap;
 import java.util.Map;
 
-import http.HttpRequest;
-import http.HttpResponse;
 import http.IServlet;
 import http.Servlet;
+import http.model.HttpRequest;
+import http.model.HttpResponse;
 import server.ConnectionHandler;
 
 public class Dispatcher {
@@ -53,16 +53,16 @@ public class Dispatcher {
                     servlet.doDelete(request, response);
                 }
                 else {
-                    response.setStatus(405);
+                    // response.setStatus(405);
                     response.setStatusMessage("Method Not Allowed");
-                    response.write("405 Method Not Allowed");
+                    // response.write("405 Method Not Allowed");
                 }
             } catch (Exception e) {
                 // handle exception: report 500
                 try {
-                    response.setStatus(500);
+                    // response.setStatus(500);
                     response.setStatusMessage("Internal Server Error");
-                    response.write("500 Internal Server Error");
+                    // response.write("500 Internal Server Error");
                 } catch (Exception ex) {
                     // ignore
                 }

@@ -10,6 +10,8 @@ public class EventLoop {
     private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
 
     public static void loop(Selector selector) throws IOException {
+        logger.info("EventLoop started thread:" + Thread.currentThread().getName());
+
         while (true) {
             // Wait for events to happen
             selector.select();
@@ -72,7 +74,7 @@ public class EventLoop {
 
         if (readComplete) {
             // Process the request
-            handler.processRequest();
+            handler.dispatchRequest();
 
             // Switch to WRITE mode - we're ready to send response
             key.interestOps(SelectionKey.OP_WRITE);

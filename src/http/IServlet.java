@@ -2,6 +2,9 @@ package http;
 
 import java.io.IOException;
 
+import http.model.HttpRequest;
+import http.model.HttpResponse;
+
 public interface IServlet {
 
     // Standard Servlet methods

@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import http.model.HttpRequest;
+import http.model.HttpResponse;
+
 public class Servlet implements IServlet {
 
     @Override
@@ -14,16 +17,16 @@ public class Servlet implements IServlet {
         data.put("path", request.getPath());
         
         // Get query param ?name=Alice
-        String user = request.param("name");
-        data.put("user", (user != null) ? user : "Guest");
+        // String user = request.param("name");
+        // data.put("user", (user != null) ? user : "Guest");
 
 
         // 2. Parse Template (try known workspace location first)
         String htmlContent = TemplateEngine.render("www/main/index.html", data);
 
         // 3. Send Response
-        response.setContentType("text/html; charset=utf-8");
-        response.write(htmlContent);
+        // response.setContentType("text/html; charset=utf-8");
+        // response.write(htmlContent);
     }
 
     @Override
