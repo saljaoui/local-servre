@@ -47,11 +47,8 @@ public class Server {
 
     private void bindAllServers() throws IOException {
         try {
-            for (WebServerConfig.ServerBlock serverBlock : config.getServers()) {
-                WebServerConfig.ListenAddress addr = serverBlock.getListen();
-                if (addr != null) {
-                    bindSingleServer(addr, serverBlock);
-                }
+            for (ServerBlock serverBlock : config.getServers()) {
+                bindSingleServer(serverBlock.getListen(), serverBlock);
             }
         } catch (IOException e) {
             closeAllChannels();
@@ -64,17 +61,17 @@ public class Server {
         ServerSocketChannel channel = null;
 
         try {
-            channel = ServerSocketChannel.open();
+            channel = ServerSocketChannel.open(); // ktft7 TCP server socket
             channel.configureBlocking(false);
             channel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-            channel.setOption(StandardSocketOptions.SO_RCVBUF, 128 * 1024);
 
             channel.bind(new InetSocketAddress(addr.getHost(), addr.getPort()));
             channel.register(selector, SelectionKey.OP_ACCEPT, serverBlock);
-
             serverChannels.put(addr.getPort(), channel);
 
-            logger.success("Listening on http://" + addr.getHost() + ":" + addr.getPort());
+            String url = "http://" + addr.getHost() + ":" + addr.getPort();
+            String coloredUrl = "\u001B[38;5;51m" + url + "\u001B[38;5;51m";
+            logger.success("Listening on " + coloredUrl);
 
         } catch (IOException e) {
             logger.error("Failed to bind " + addr.getHost() + ":" + addr.getPort(), e);
