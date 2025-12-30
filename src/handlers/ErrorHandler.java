@@ -10,16 +10,15 @@ import java.util.Map;
 
 public class ErrorHandler {
 
-    private final String errorPagesRoot = "error_pages"; // folder where 404.html is
+    private final String errorPagesRoot = "error_pages";
 
-    // 404 Not Found
-    public HttpResponse notFound() {
+    //  Generic method to handle all error responses
+    private HttpResponse buildErrorResponse(int statusCode, String statusMessage, String errorPageFileName) {
         HttpResponse response = new HttpResponse();
-        response.setStatusCode(404);
-        response.setStatusMessage("Not Found");
+        response.setStatusCode(statusCode);
+        response.setStatusMessage(statusMessage);
 
-        // Path to 404.html
-        File file = new File(errorPagesRoot + "/404.html");
+        File file = new File(errorPagesRoot + "/" + errorPageFileName);
 
         if (file.exists() && !file.isDirectory()) {
             try {
@@ -32,20 +31,56 @@ public class ErrorHandler {
                 response.setHeaders(headers);
 
             } catch (IOException e) {
-                // If reading fails, just leave body empty
-                response.setBody(new byte[0]);
-                Map<String, String> headers = new HashMap<>();
-                headers.put("Content-Length", "0");
-                response.setHeaders(headers);
+                setEmptyBody(response);
             }
         } else {
-            // If file doesn't exist, leave body empty
-            response.setBody(new byte[0]);
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Content-Length", "0");
-            response.setHeaders(headers);
+            setEmptyBody(response);
         }
 
         return response;
+    }
+
+    //  Helper method to set an empty body with appropriate headers
+    private void setEmptyBody(HttpResponse response) {
+        response.setBody(new byte[0]);
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Length", "0");
+        response.setHeaders(headers);
+    }
+
+    //  400 Bad Request
+    public HttpResponse badRequest() {
+        return buildErrorResponse(400, "Bad Request", "400.html");
+    }
+
+    //  403 Forbidden
+    public HttpResponse forbidden() {
+        return buildErrorResponse(403, "Forbidden", "403.html");
+    }
+
+    //  404 Not Found
+    public HttpResponse notFound() {
+        return buildErrorResponse(404, "Not Found", "404.html");
+    }
+
+    //  405 Method Not Allowed
+    public HttpResponse methodNotAllowed() {
+        return buildErrorResponse(405, "Method Not Allowed", "405.html");
+    }
+
+    //  413 Payload Too Large
+    public HttpResponse payloadTooLarge() {
+        return buildErrorResponse(413, "Payload Too Large", "413.html");
+    }
+
+    //  500 Internal Server Error
+    public HttpResponse internalServerError() {
+        return buildErrorResponse(500, "Internal Server Error", "500.html");
+    }
+
+    //  Generic error handler for any status code
+    public HttpResponse handleError(int statusCode, String statusMessage) {
+        String fileName = statusCode + ".html";
+        return buildErrorResponse(statusCode, statusMessage, fileName);
     }
 }
