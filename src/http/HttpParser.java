@@ -30,7 +30,7 @@ public class HttpParser {
         String headerSection = requestData.substring(0, headerEndIndex);
         String bodySection = requestData.substring(headerEndIndex + 4);
 
-        logger.debug("Header end index=" + headerEndIndex + " body length=" + bodySection.length());
+        // logger.debug("Header end index=" + headerEndIndex + " body length=" + bodySection.length());
 
         // 2. Split Headers into lines
         String[] linesHeader = headerSection.split("\r\n");
@@ -46,7 +46,7 @@ public class HttpParser {
         // 3. Handle Body (Mandatory for Uploads/POST)
         if (!bodySection.isEmpty()) {
             request.setBody(bodySection.getBytes(StandardCharsets.UTF_8));
-            logger.debug("Set body bytes length=" + request.getBody().length);
+            // logger.debug("Set body bytes length=" + request.getBody().length);
         }
         
         return request;
@@ -72,7 +72,7 @@ public class HttpParser {
             request.setHttpVersion(parts[2]);
         }
         
-        logger.debug("Parsed Request Line: Method=" + request.getMethod() + " Path=" + request.getPath());
+        // logger.debug("Parsed Request Line: Method=" + request.getMethod() + " Path=" + request.getPath());
     }
 
     /**
@@ -88,7 +88,7 @@ public class HttpParser {
         
         // Store generic header
         request.setHeaders(name, value);
-        logger.debug("Header added: " + name + "=" + value);
+        // logger.debug("Header added: " + name + "=" + value);
 
         // Handle Cookies (Mandatory Requirement)
         if (name.equalsIgnoreCase("Cookie")) {
@@ -112,7 +112,7 @@ public class HttpParser {
                 String value = cookie.substring(equalIndex + 1).trim();
 
                 request.addCookie(name, value);
-                logger.debug("Cookie parsed: " + name + "=" + value);
+                // logger.debug("Cookie parsed: " + name + "=" + value);
             }
         }
     }

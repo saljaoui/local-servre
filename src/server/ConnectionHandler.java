@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
 import config.model.WebServerConfig.ServerBlock;
+import http.HttpParser;
 import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
@@ -51,7 +52,12 @@ public class ConnectionHandler {
     // Process the HTTP request and prepare response
     public void dispatchRequest() {
         // 1. Parse the request
-       httpRequest = HttpParser.processRequest(request);
+       try {
+        httpRequest = HttpParser.processRequest(request);
+       } catch (Exception e) {
+        //   Auto-generated catch block
+        e.printStackTrace();
+       }
 
         // 2. Route the request to get a proper HttpResponse
         httpResponse = router.routeRequest(httpRequest, server);
