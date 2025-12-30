@@ -17,8 +17,8 @@ public class ConnectionHandler {
     private final SocketChannel channel;
     private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
     private ByteBuffer writeBuffer;
-    private String request = "";
-    private StringBuilder rawRequestBuilder = new StringBuilder();
+    // We use StringBuilder because modifying Strings (+=) is very slow and memory-heavy
+    private final StringBuilder rawRequestBuilder = new StringBuilder();
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
     private final Router router;
@@ -34,23 +34,32 @@ public class ConnectionHandler {
         this.server = server;
         this.router = new Router();
     }
-
+ /**
+     * THE READER
+     * 1. Reads bytes from network.
+     * 2. Converts to String.
+     * 3. Checks if we have enough data (Headers + Body).
+     */
     // Read data from client - returns true when complete
     public boolean read() throws IOException {
         int bytesRead = channel.read(readBuffer);
-
+System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
         if (bytesRead == -1) {
             throw new IOException("Client closed connection");
         }
 
         // Convert buffer to string
-        readBuffer.flip();
+        readBuffer.flip();// Switch to read mode
         byte[] data = new byte[readBuffer.remaining()];
 
         readBuffer.get(data);
+
         String chunck = new String(data, StandardCharsets.UTF_8);
-        rawRequestBuilder.append(chunck);
-        totalBytesRead += bytesRead;
+        rawRequestBuilder.append(chunck);// Append new data to request builder 
+        totalBytesRead += bytesRead;//  Update total bytes read
+
+        System.out.println("[DEBUG] Total bytes read so far: " + totalBytesRead);
+       
         // clear buffer for next read
         readBuffer.clear();
 
@@ -160,9 +169,7 @@ public class ConnectionHandler {
         //     int length = httpResponse.getBody() != null ? httpResponse.getBody().length : 0;
         //     responseBuilder.append("Content-Length: ").append(length).append("\r\n");
         // }
-
         // End headers
-
         // Body
         byte[] body = httpResponse.getBody() != null ? httpResponse.getBody() : new byte[0];
 
@@ -184,11 +191,11 @@ public class ConnectionHandler {
     private void prepareError(int code, String message) {
         String html = "<h1>" + code + " " + message + "</h1>";
         byte[] body = html.getBytes(StandardCharsets.UTF_8);
-        
-        String header = "HTTP/1.1 " + code + " Error\r\n" +
-                       "Content-Type: text/html\r\n" +
-                       "Content-Length: " + body.length + "\r\n" +
-                       "Connection: close\r\n\r\n";
+
+        String header = "HTTP/1.1 " + code + " Error\r\n"
+                + "Content-Type: text/html\r\n"
+                + "Content-Length: " + body.length + "\r\n"
+                + "Connection: close\r\n\r\n";
 
         writeBuffer = ByteBuffer.allocate(header.length() + body.length);
         writeBuffer.put(header.getBytes(StandardCharsets.UTF_8));
