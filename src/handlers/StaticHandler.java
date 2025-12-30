@@ -1,12 +1,11 @@
 package handlers;
 
+import http.model.HttpRequest;
+import http.model.HttpResponse;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
-import http.model.HttpRequest;
-import http.model.HttpResponse;
 import routing.Router.Route;
 
 public class StaticHandler {

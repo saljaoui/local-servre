@@ -1,6 +1,7 @@
 package routing;
 
 import config.model.WebServerConfig.ServerBlock;
+import handlers.CgiHandler;
 import handlers.ErrorHandler;
 import handlers.StaticHandler;
 import http.model.HttpRequest;
@@ -10,12 +11,12 @@ import http.model.HttpResponse;
 public class Router {
 
     private StaticHandler staticHandler;
-    // private CGIHandler cgiHandler;
+    private CgiHandler cgiHandler;
     private ErrorHandler errorHandler;
 
     public Router() {
         this.staticHandler = new StaticHandler();
-        // this.cgiHandler = new CGIHandler();
+        this.cgiHandler = new CgiHandler();
         this.errorHandler = new ErrorHandler();
     }
 
@@ -32,7 +33,7 @@ public class Router {
             case STATIC:
                 return staticHandler.handle(request, route);
             case CGI:
-                // return cgiHandler.handle(request, route);
+                return cgiHandler.handle(request, route);
             case REDIRECT:
                 // return errorHandler.redirect(route.getRedirectUrl()); 
             default:
@@ -52,7 +53,8 @@ public class Router {
             return new Route(Route.Type.STATIC, request.getPath());
 
 
-        } else if (request.getPath().endsWith(".py")) {
+        } else if (request.getPath().equals("/cgi") || request.getPath().equals("/cgi/")) {
+            // CGI form / entry
             return new Route(Route.Type.CGI, request.getPath());
         }
 
