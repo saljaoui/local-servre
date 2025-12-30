@@ -1,6 +1,8 @@
 package config;
 
 import config.model.WebServerConfig;
+import routing.model.Route;
+
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -134,8 +136,8 @@ public class WebConfigLoader {
         return addr;
     }
 
-    private static List<WebServerConfig.Route> parseRoutes(String json) {
-        List<WebServerConfig.Route> routes = new ArrayList<>();
+    private static List<Route> parseRoutes(String json) {
+        List<Route> routes = new ArrayList<>();
         json = json.substring(1, json.length() - 1).trim();
 
         List<String> routeJsons = JsonParser.splitArray(json);
@@ -147,8 +149,8 @@ public class WebConfigLoader {
         return routes;
     }
 
-    private static WebServerConfig.Route parseRoute(String json) {
-        WebServerConfig.Route route = new WebServerConfig.Route();
+    private static Route parseRoute(String json) {
+        Route route = new Route();
         json = json.substring(1, json.length() - 1).trim();
 
         Map<String, String> fields = JsonParser.splitTopLevel(json);

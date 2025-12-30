@@ -5,15 +5,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import config.model.WebServerConfig.ServerBlock;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
-import routing.Router.Route;
+import routing.model.Route;
 
 public class StaticHandler {
 
     private final String wwwRoot = "www";
 
-    public HttpResponse handle(HttpRequest request, Route route) {
+    public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
         HttpResponse response = new HttpResponse();
         route.getPath();
 

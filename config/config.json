@@ -39,6 +39,12 @@
           "autoIndex": false
         },
         {
+          "path": "/simo",
+          "methods": [
+            "POST"
+          ]
+        },
+        {
           "path": "/uploads",
           "methods": [
             "GET",

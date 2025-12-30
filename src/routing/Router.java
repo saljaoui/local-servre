@@ -3,78 +3,57 @@ package routing;
 import config.model.WebServerConfig.ServerBlock;
 import handlers.ErrorHandler;
 import handlers.StaticHandler;
+import handlers.RedirectHandler;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import routing.model.Route;
 
-// Minimal Router for audit
 public class Router {
 
-    private StaticHandler staticHandler;
-    // private CGIHandler cgiHandler;
-    private ErrorHandler errorHandler;
+    private final StaticHandler staticHandler;
+    // private final CGIHandler cgiHandler;
+    private final RedirectHandler redirectHandler;
+    private final ErrorHandler errorHandler;
 
     public Router() {
         this.staticHandler = new StaticHandler();
         // this.cgiHandler = new CGIHandler();
+        this.redirectHandler = new RedirectHandler();
         this.errorHandler = new ErrorHandler();
     }
 
     public HttpResponse routeRequest(HttpRequest request, ServerBlock server) {
-        Route route = routerMatch(request);
+        Route route = routerMatch(request, server);
 
         if (route == null) {
-            // No route matched → return default response to prevent NPE
             return errorHandler.notFound();
         }
 
-        // 2. Dispatch to the correct handler
-        switch (route.getType()) {
-            case STATIC:
-                return staticHandler.handle(request, route);
-            case CGI:
-                // return cgiHandler.handle(request, route);
-            case REDIRECT:
-                // return errorHandler.redirect(route.getRedirectUrl()); 
-            default:
-                // return errorHandler.internalError();
-                return new HttpResponse();
+        if (!route.isMethodAllowed(request.getMethod())) {
+            return errorHandler.methodNotAllowed(server);
         }
+
+        if (route.isRedirect()) {
+            // return redirectHandler.handle(request, route, server);
+        }
+
+        if (route.isCgiEnabled()) {
+            // return cgiHandler.handle(request, route, server);
+        }
+
+        return staticHandler.handle(request, server, route);
     }
 
-    private Route routerMatch(HttpRequest request) {
-
-        if (request.getPath().equals("/")) {
-
-            return new Route(Route.Type.STATIC, request.getPath());
-
-        } else if (request.getPath().equals("/simo")) {
-
-            return new Route(Route.Type.STATIC, request.getPath());
-
-
-        } else if (request.getPath().endsWith(".py")) {
-            return new Route(Route.Type.CGI, request.getPath());
+    private Route routerMatch(HttpRequest request, ServerBlock server) {
+        if (server.getRoutes() == null || server.getRoutes().isEmpty()) {
+            return null;
         }
 
-        // No match
+        for (Route route : server.getRoutes()) {
+            if (route.getPath() != null && route.getPath().equals(request.getPath())) {
+                return route;
+            }
+        }
         return null;
-    }
-
-    // Minimal Route class for internal use
-    public static class Route {
-        enum Type { STATIC, CGI, REDIRECT }
-        private Type type;
-        private String path;
-        private String redirectUrl;
-
-        public Route(Type type, String path) {
-            this.type = type;
-            this.path = path;
-        }
-
-        public Type getType() { return type; }
-        public String getPath() { return path; }
-        public String getRedirectUrl() { return redirectUrl; }
-        public void setRedirectUrl(String redirectUrl) { this.redirectUrl = redirectUrl; }
     }
 }
