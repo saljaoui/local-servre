@@ -1,6 +1,7 @@
 package routing;
 
 import config.model.WebServerConfig.ServerBlock;
+import handlers.CgiHandler;
 import handlers.ErrorHandler;
 import handlers.StaticHandler;
 import handlers.RedirectHandler;
@@ -11,12 +12,13 @@ import routing.model.Route;
 public class Router {
 
     private final StaticHandler staticHandler;
-    // private final CGIHandler cgiHandler;
+    private final CgiHandler cgiHandler;
     private final RedirectHandler redirectHandler;
     private final ErrorHandler errorHandler;
 
     public Router() {
         this.staticHandler = new StaticHandler();
+        this.cgiHandler = new CgiHandler();
         // this.cgiHandler = new CGIHandler();
         this.redirectHandler = new RedirectHandler();
         this.errorHandler = new ErrorHandler();
@@ -38,7 +40,7 @@ public class Router {
         }
 
         if (route.isCgiEnabled()) {
-            // return cgiHandler.handle(request, route, server);
+            return cgiHandler.handle(request, route);
         }
 
         return staticHandler.handle(request, server, route);

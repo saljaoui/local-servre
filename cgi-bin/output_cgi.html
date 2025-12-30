@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CGI Result</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0e27;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .glow {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(138, 43, 226, 0.15) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      animation: float 6s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.08); }
+    }
+    .container {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      max-width: 650px;
+      width: 100%;
+      background: rgba(20, 25, 50, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(138, 43, 226, 0.2);
+      border-radius: 12px;
+      padding: 70px 40px;
+    }
+    .code {
+      font-size: 5.5rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #8a2be2, #da70d6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 14px;
+      line-height: 1;
+    }
+    .card {
+      text-align: left;
+      margin: 0 auto 26px;
+      padding: 18px;
+      border-radius: 10px;
+      border: 1px solid rgba(138, 43, 226, 0.25);
+      background: rgba(10, 14, 39, 0.55);
+      overflow-wrap: anywhere;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(138, 43, 226, 0.15);
+    }
+    .row:last-child { border-bottom: none; }
+    .label { color: #cfcfe8; font-weight: 600; }
+    .value { color: #eaeaff; font-weight: 600; text-align: right; }
+    .userText {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(138, 43, 226, 0.15);
+      color: #d7d7ff;
+      white-space: pre-wrap;
+    }
+    .button {
+      display: inline-block;
+      padding: 12px 35px;
+      background: linear-gradient(135deg, #8a2be2, #da70d6);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 1rem;
+    }
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(138, 43, 226, 0.4);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="glow"></div>
+
+  <main class="container">
+    <div class="code">OK</div>
+
+    <section class="card">
+      <div class="row">
+        <span class="label">Character count</span>
+        <span class="value">{{COUNT}}</span>
+      </div>
+      <div class="row">
+        <span class="label">Estimated time</span>
+        <span class="value">{{TIME_MS}} ms (~{{TIME_S}} s)</span>
+      </div>
+      <div class="row">
+        <span class="label">Rate</span>
+        <span class="value">50 ms / char</span>
+      </div>
+
+      <div class="userText">
+        <span class="label">You said:</span>
+        <div>{{MESSAGE}}</div>
+      </div>
+    </section>
+
+    <a class="button" href="/cgi">Send another message</a>
+  </main>
+</body>
+</html>

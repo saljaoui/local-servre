@@ -7,17 +7,12 @@
   "servers": [
     {
       "name": "main",
-      "listen": 
-        {
-          "host": "0.0.0.0",
-          "port": 8080,
-          "default": true
-        }
-      ,
-      "serverNames": [
-        "localhost",
-        "main.com"
-      ],
+      "listen": {
+        "host": "0.0.0.0",
+        "port": 8080,
+        "default": true
+      },
+      "serverNames": ["localhost", "main.com"],
       "root": "./www/main",
       "clientMaxBodyBytes": 1048576,
       "errorPages": {
@@ -31,9 +26,7 @@
       "routes": [
         {
           "path": "/",
-          "methods": [
-            "GET"
-          ],
+          "methods": ["GET"],
           "root": "./www/main",
           "index": "index.html",
           "autoIndex": false
@@ -46,11 +39,7 @@
         },
         {
           "path": "/uploads",
-          "methods": [
-            "GET",
-            "POST",
-            "DELETE"
-          ],
+          "methods": ["GET", "POST", "DELETE"],
           "root": "./www/main/uploads",
           "index": "index.html",
           "autoIndex": true,
@@ -61,24 +50,8 @@
           }
         },
         {
-          "path": "/cgi",
-          "methods": [
-            "GET",
-            "POST"
-          ],
-          "cgi": {
-            "enabled": true,
-            "binDir": "./cgi-bin",
-            "byExtension": {
-              ".py": "python3"
-            }
-          }
-        },
-        {
           "path": "/redirect",
-          "methods": [
-            "GET"
-          ],
+          "methods": ["GET"],
           "redirect": {
             "status": 301,
             "to": "/"
@@ -88,17 +61,12 @@
     },
     {
       "name": "main",
-      "listen": 
-        {
-          "host": "0.0.0.0",
-          "port": 8081,
-          "default": false
-        }
-      ,
-      "serverNames": [
-        "localhost",
-        "main.com"
-      ],
+      "listen": {
+        "host": "0.0.0.0",
+        "port": 8081,
+        "default": false
+      },
+      "serverNames": ["localhost", "main.com"],
       "root": "./www/main",
       "clientMaxBodyBytes": 1048576,
       "errorPages": {
@@ -112,20 +80,14 @@
       "routes": [
         {
           "path": "/",
-          "methods": [
-            "GET"
-          ],
+          "methods": ["GET"],
           "root": "./www/main",
           "index": "index.html",
           "autoIndex": false
         },
         {
           "path": "/uploads",
-          "methods": [
-            "GET",
-            "POST",
-            "DELETE"
-          ],
+          "methods": ["GET", "POST", "DELETE"],
           "root": "./www/main/uploads",
           "index": "index.html",
           "autoIndex": true,
@@ -137,10 +99,7 @@
         },
         {
           "path": "/cgi",
-          "methods": [
-            "GET",
-            "POST"
-          ],
+          "methods": ["GET", "POST"],
           "cgi": {
             "enabled": true,
             "binDir": "./cgi-bin",
@@ -151,9 +110,7 @@
         },
         {
           "path": "/redirect",
-          "methods": [
-            "GET"
-          ],
+          "methods": ["GET"],
           "redirect": {
             "status": 301,
             "to": "/"
@@ -161,7 +118,7 @@
         }
       ]
     },
-     {
+    {
       "name": "main",
       "listen": { "host": "0.0.0.0", "port": 8082, "default": true },
       "serverNames": ["localhost", "main.com"],
