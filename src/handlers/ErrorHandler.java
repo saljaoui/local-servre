@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
+import config.model.WebServerConfig.ServerBlock;
+
 public class ErrorHandler {
 
     private final String errorPagesRoot = "error_pages";
@@ -64,7 +66,7 @@ public class ErrorHandler {
     }
 
     //  405 Method Not Allowed
-    public HttpResponse methodNotAllowed() {
+    public HttpResponse methodNotAllowed(ServerBlock server) {
         return buildErrorResponse(405, "Method Not Allowed", "405.html");
     }
 
