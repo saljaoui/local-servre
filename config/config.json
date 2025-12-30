@@ -41,7 +41,7 @@
           "path": "/uploads",
           "methods": ["GET", "POST", "DELETE"],
           "root": "./www/main/uploads",
-          "index": "index.html",
+          "index": "uploads.html",
           "autoIndex": true,
           "upload": {
             "enabled": true,

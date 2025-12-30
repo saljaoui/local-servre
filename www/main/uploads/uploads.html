@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Methods Test Suite</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; color: #fff; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 30px; color: #00d4ff; }
+        h2 { color: #00d4ff; margin-top: 30px; margin-bottom: 15px; }
+        .card { background: rgba(255,255,255,0.1); border-radius: 10px; padding: 20px; margin-bottom: 20px; backdrop-filter: blur(10px); }
+        .card h3 { color: #ff6b6b; margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #aaa; }
+        input[type="text"], input[type="password"], input[type="file"], textarea, select { width: 100%; padding: 10px; margin-bottom: 15px; border: none; border-radius: 5px; background: rgba(255,255,255,0.2); color: #fff; }
+        input[type="file"] { background: rgba(255,255,255,0.1); }
+        button { padding: 12px 25px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-right: 10px; margin-bottom: 10px; transition: all 0.3s; }
+        .btn-get { background: #4CAF50; color: white; }
+        .btn-post { background: #2196F3; color: white; }
+        .btn-delete { background: #f44336; color: white; }
+        .btn-upload { background: #9C27B0; color: white; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .response-area { background: rgba(0,0,0,0.5); border-radius: 5px; padding: 15px; margin-top: 15px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .status-200 { color: #4CAF50; }
+        .status-400 { color: #ff9800; }
+        .status-500 { color: #f44336; }
+        .login-form { max-width: 400px; margin: 0 auto; }
+        .test-result { padding: 10px; margin: 5px 0; border-radius: 5px; }
+        .test-success { background: rgba(76, 175, 80, 0.2); border-left: 4px solid #4CAF50; }
+        .test-error { background: rgba(244, 67, 54, 0.2); border-left: 4px solid #f44336; }
+        .file-list { list-style: none; }
+        .file-list li { padding: 10px; background: rgba(255,255,255,0.05); margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .file-list button { padding: 5px 10px; font-size: 12px; margin: 0; }
+        .note { background: rgba(255, 193, 7, 0.2); border-left: 4px solid #ffc107; padding: 10px; margin-bottom: 20px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HTTP Methods Test Suite</h1>
+        
+        <div class="note">
+            <strong>Note:</strong> Server running on port 8080. All endpoints start with <code>http://localhost:8080</code>
+        </div>
+
+        <!-- Login Form Test -->
+        <div class="card">
+            <h3>Login Form (POST)</h3>
+            <div class="login-form">
+                <label>Username</label>
+                <input type="text" id="loginUsername" placeholder="Enter username">
+                <label>Password</label>
+                <input type="password" id="loginPassword" placeholder="Enter password">
+                <button class="btn-post" onclick="testLogin()">Submit Login (POST)</button>
+            </div>
+            <div class="response-area" id="loginResponse">Response will appear here...</div>
+        </div>
+
+        <div class="grid">
+            <!-- POST Test -->
+            <div class="card">
+                <h3>POST Request Test</h3>
+                <label>Endpoint</label>
+                <select id="postEndpoint">
+                    <option value="/simo">/simo</option>
+                    <option value="/uploads">/uploads (upload file)</option>
+                </select>
+                <label>Message (for /simo)</label>
+                <textarea id="postMessage" rows="3" placeholder="Enter message to send">Hello from test!</textarea>
+                <label>File (for /uploads)</label>
+                <input type="file" id="postFile">
+                <button class="btn-post" onclick="testPost()">Send POST</button>
+                <div class="response-area" id="postResponse">Response will appear here...</div>
+            </div>
+
+            <!-- GET Test -->
+            <div class="card">
+                <h3>GET Request Test</h3>
+                <label>Endpoint</label>
+                <input type="text" id="getEndpoint" value="/" placeholder="/path">
+                <button class="btn-get" onclick="testGet()">Send GET</button>
+                <div class="response-area" id="getResponse">Response will appear here...</div>
+            </div>
+
+            <!-- DELETE Test -->
+            <div class="card">
+                <h3>DELETE Request Test</h3>
+                <label>File to Delete (in uploads/)</label>
+                <input type="text" id="deleteFile" placeholder="filename.txt">
+                <button class="btn-delete" onclick="testDelete()">Delete File</button>
+                <div class="response-area" id="deleteResponse">Response will appear here...</div>
+            </div>
+
+            <!-- File Upload Test -->
+            <div class="card">
+                <h3>File Upload Test</h3>
+                <label>Select File</label>
+                <input type="file" id="uploadFile">
+                <button class="btn-upload" onclick="testUpload()">Upload File</button>
+                <div class="response-area" id="uploadResponse">Response will appear here...</div>
+            </div>
+        </div>
+
+        <!-- Uploads Directory Browser -->
+        <div class="card">
+            <h3>Uploads Directory</h3>
+            <button class="btn-get" onclick="listUploads()">Refresh File List</button>
+            <ul class="file-list" id="fileList">
+                <li>Click "Refresh File List" to see files...</li>
+            </ul>
+        </div>
+
+        <!-- Redirect Test -->
+        <div class="card">
+            <h3>Redirect Test</h3>
+            <p>Click below to test the /redirect endpoint (301 redirect to /):</p>
+            <button class="btn-get" onclick="testRedirect()">Test Redirect (/redirect -> /)</button>
+            <div class="response-area" id="redirectResponse">Response will appear here...</div>
+        </div>
+
+        <!-- Batch Tests -->
+        <div class="card">
+            <h3>Batch Tests</h3>
+            <button onclick="runAllTests()">Run All Tests</button>
+            <div id="batchResults"></div>
+        </div>
+    </div>
+
+    <script>
+        var BASE_URL = 'http://localhost:8080';
+
+        // GET Request
+        async function testGet() {
+            var endpoint = document.getElementById('getEndpoint').value || '/';
+            var responseEl = document.getElementById('getResponse');
+            responseEl.textContent = 'Loading...';
+            
+            try {
+                var start = Date.now();
+                var response = await fetch(BASE_URL + endpoint);
+                var text = await response.text();
+                var time = Date.now() - start;
+                
+                responseEl.innerHTML = '<span class="status-' + response.status + '">Status: ' + response.status + ' ' + response.statusText + '</span> (' + time + 'ms)\n\n' + text;
+            } catch (err) {
+                responseEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // POST Request
+        async function testPost() {
+            var endpoint = document.getElementById('postEndpoint').value;
+            var message = document.getElementById('postMessage').value;
+            var fileInput = document.getElementById('postFile');
+            var responseEl = document.getElementById('postResponse');
+            responseEl.textContent = 'Loading...';
+            
+            try {
+                var body, headers = {};
+                
+                if (endpoint === '/uploads' && fileInput.files.length > 0) {
+                    body = await fileInput.files[0].arrayBuffer();
+                    headers['Content-Type'] = 'application/octet-stream';
+                } else {
+                    body = message;
+                    headers['Content-Type'] = 'text/plain';
+                }
+                
+                var start = Date.now();
+                var response = await fetch(BASE_URL + endpoint, {
+                    method: 'POST',
+                    headers: headers,
+                    body: body
+                });
+                var text = await response.text();
+                var time = Date.now() - start;
+                
+                responseEl.innerHTML = '<span class="status-' + response.status + '">Status: ' + response.status + ' ' + response.statusText + '</span> (' + time + 'ms)\n\n' + text;
+            } catch (err) {
+                responseEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // DELETE Request
+        async function testDelete() {
+            var filename = document.getElementById('deleteFile').value;
+            var responseEl = document.getElementById('deleteResponse');
+            responseEl.textContent = 'Loading...';
+            
+            if (!filename) {
+                responseEl.textContent = 'Please enter a filename';
+                return;
+            }
+            
+            try {
+                var start = Date.now();
+                var response = await fetch(BASE_URL + '/uploads/' + filename, {
+                    method: 'DELETE'
+                });
+                var text = await response.text();
+                var time = Date.now() - start;
+                
+                responseEl.innerHTML = '<span class="status-' + response.status + '">Status: ' + response.status + ' ' + response.statusText + '</span> (' + time + 'ms)\n\n' + text;
+            } catch (err) {
+                responseEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // File Upload
+        async function testUpload() {
+            var fileInput = document.getElementById('uploadFile');
+            var responseEl = document.getElementById('uploadResponse');
+            responseEl.textContent = 'Loading...';
+            
+            if (fileInput.files.length === 0) {
+                responseEl.textContent = 'Please select a file';
+                return;
+            }
+            
+            try {
+                var formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                var start = Date.now();
+                var response = await fetch(BASE_URL + '/uploads', {
+                    method: 'POST',
+                    body: formData
+                });
+                var text = await response.text();
+                var time = Date.now() - start;
+                
+                responseEl.innerHTML = '<span class="status-' + response.status + '">Status: ' + response.status + ' ' + response.statusText + '</span> (' + time + 'ms)\n\n' + text;
+                
+                if (response.ok) {
+                    listUploads();
+                }
+            } catch (err) {
+                responseEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // Login Form
+        async function testLogin() {
+            var username = document.getElementById('loginUsername').value;
+            var password = document.getElementById('loginPassword').value;
+            var responseEl = document.getElementById('loginResponse');
+            responseEl.textContent = 'Logging in...';
+            
+            try {
+                var formData = new URLSearchParams();
+                formData.append('username', username);
+                formData.append('password', password);
+                
+                var start = Date.now();
+                var response = await fetch(BASE_URL + '/simo', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData.toString()
+                });
+                var text = await response.text();
+                var time = Date.now() - start;
+                
+                responseEl.innerHTML = '<span class="status-' + response.status + '">Status: ' + response.status + ' ' + response.statusText + '</span> (' + time + 'ms)\n\n' + text;
+            } catch (err) {
+                responseEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // Redirect Test
+        async function testRedirect() {
+            var responseEl = document.getElementById('redirectResponse');
+            responseEl.textContent = 'Following redirect...';
+            
+            try {
+                var start = Date.now();
+                var response = await fetch(BASE_URL + '/redirect', {
+                    method: 'GET',
+                    redirect: 'manual'
+                });
+                
+                var redirectInfo = 'Status: ' + response.status + ' ' + response.statusText + '\n';
+                redirectInfo += 'Headers:\n';
+                for (var pair of response.headers.entries()) {
+                    redirectInfo += '  ' + pair[0] + ': ' + pair[1] + '\n';
+                }
+                redirectInfo += '\n(Redirect to: ' + (response.headers.get('location') || 'none') + ')';
+                redirectInfo += '\n\nTime: ' + (Date.now() - start) + 'ms';
+                
+                responseEl.textContent = redirectInfo;
+            } catch (err) {
+                responseEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        // List Uploads
+        async function listUploads() {
+            var fileList = document.getElementById('fileList');
+            fileList.innerHTML = '<li>Loading...</li>';
+            
+            try {
+                var response = await fetch(BASE_URL + '/uploads');
+                var html = await response.text();
+                
+                var files = [];
+                var links = html.match(/href="([^"]+\.(txt|html|js|css|png|jpg|jpeg|gif|py))"/g);
+                
+                if (links) {
+                    links.forEach(function(link) {
+                        var match = link.match(/href="([^"]+)"/);
+                        if (match) {
+                            files.push(match[1].replace('uploads/', ''));
+                        }
+                    });
+                }
+                
+                if (files.length === 0) {
+                    fileList.innerHTML = '<li>No files found in uploads directory</li>';
+                } else {
+                    var html = '';
+                    files.forEach(function(file) {
+                        html += '<li><span>' + file + '</span><div><button class="btn-get" onclick="viewFile(\'' + file + '\')">View</button><button class="btn-delete" onclick="deleteFile(\'' + file + '\')">Delete</button></div></li>';
+                    });
+                    fileList.innerHTML = html;
+                }
+            } catch (err) {
+                fileList.innerHTML = '<li>Error loading files: ' + err.message + '</li>';
+            }
+        }
+
+        function viewFile(filename) {
+            window.open(BASE_URL + '/uploads/' + filename, '_blank');
+        }
+
+        async function deleteFile(filename) {
+            if (!confirm('Delete ' + filename + '?')) return;
+            
+            document.getElementById('deleteFile').value = filename;
+            await testDelete();
+            listUploads();
+        }
+
+        // Batch Tests
+        async function runAllTests() {
+            var results = document.getElementById('batchResults');
+            results.innerHTML = '<h4>Test Results:</h4>';
+            
+            var tests = [
+                { name: 'GET /', fn: function() { return fetch(BASE_URL + '/'); } },
+                { name: 'GET /redirect', fn: function() { return fetch(BASE_URL + '/redirect', { redirect: 'manual' }); } },
+                { name: 'POST /simo', fn: function() { return fetch(BASE_URL + '/simo', { method: 'POST', body: 'test message' }); } }
+            ];
+            
+            for (var i = 0; i < tests.length; i++) {
+                var test = tests[i];
+                try {
+                    var start = Date.now();
+                    var response = await test.fn();
+                    var time = Date.now() - start;
+                    
+                    results.innerHTML += '<div class="test-result ' + (response.ok ? 'test-success' : 'test-error') + '">' + test.name + ': <span class="status-' + response.status + '">' + response.status + '</span> (' + time + 'ms)</div>';
+                } catch (err) {
+                    results.innerHTML += '<div class="test-result test-error">' + test.name + ': ERROR - ' + err.message + '</div>';
+                }
+            }
+            
+            results.innerHTML += '<p>Batch tests complete!</p>';
+            listUploads();
+        }
+
+        // Initialize
+        listUploads();
+    </script>
+</body>
+</html>
+
