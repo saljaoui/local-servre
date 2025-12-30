@@ -5,7 +5,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
 import http.HttpParser;
-import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
 import routing.Router;
@@ -55,7 +54,7 @@ public class ConnectionHandler {
         try {
             httpRequest = HttpParser.processRequest(request);
         } catch (Exception e) {
-            // TODO Auto-generated catch block
+            //   Auto-generated catch block
             e.printStackTrace();
         }
 
