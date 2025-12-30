@@ -53,7 +53,7 @@ public class ConnectionHandler {
             // 1. Parse the request
             httpRequest = ParseRequest.processRequest(request);
 
-            // 2. Route the request to get a proper HttpResponse
+            2. Route the request to get a proper HttpResponse
             httpResponse = router.routeRequest(httpRequest, server);
 
             // 3. Build raw HTTP response bytes from HttpResponse object
