@@ -9,11 +9,10 @@ import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
 import routing.Router;
-import util.SonicLogger;
 
 public class ConnectionHandler {
 
-    private static final SonicLogger logger = SonicLogger.getLogger(ConnectionHandler.class);
+    // private static final SonicLogger logger = SonicLogger.getLogger(ConnectionHandler.class);
 
     private final SocketChannel channel;
     private final ByteBuffer readBuffer = ByteBuffer.allocate(1024);
