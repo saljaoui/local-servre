@@ -3,6 +3,8 @@ package server;
 import java.io.IOException;
 import java.nio.channels.*;
 import java.util.Iterator;
+
+import config.model.WebServerConfig.ServerBlock;
 import util.SonicLogger;
 
 public class EventLoop {
@@ -47,6 +49,8 @@ public class EventLoop {
 
     private static void handleAccept(SelectionKey key, Selector selector) throws IOException {
         ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
+        ServerBlock server = (ServerBlock) key.attachment();
+
         SocketChannel clientChannel = serverChannel.accept();
 
         if (clientChannel == null)
@@ -58,7 +62,7 @@ public class EventLoop {
 
         // Register for READ events and attach a Handler
         SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
-        ConnectionHandler handler = new ConnectionHandler(clientChannel);
+        ConnectionHandler handler = new ConnectionHandler(clientChannel, server);
         clientKey.attach(handler); // Attach handler to the key
 
         System.out.println("Client connected: " + clientChannel.getRemoteAddress());
