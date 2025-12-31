@@ -16,8 +16,7 @@ public class ParseRequest {
      * Handles: Request Line, Headers (Host, Cookie, Content-Length), Body.
      */
     public static HttpRequest processRequest(String requestData) throws Exception {
-        logger.info("Processing request");
-
+        System.out.println("[CH] [PARSER] Starting Parse. Input String Length: " + requestData.length());
         HttpRequest request = new HttpRequest();
 
         // 1. Split Header and Body
@@ -29,11 +28,11 @@ public class ParseRequest {
 
         String headerSection = requestData.substring(0, headerEndIndex);
         String bodySection = requestData.substring(headerEndIndex + 4);
+        System.out.println("[CH] [PARSER] Body String Length: " + bodySection.length());
 
         // 2. Split Headers into lines
         String[] linesHeader = headerSection.split("\r\n");
 
-        // Line 0 is Request Line (METHOD URI VERSION)
         parseRequestLine(linesHeader[0], request);
 
         // Lines 1..N are Headers
@@ -43,27 +42,22 @@ public class ParseRequest {
 
         // 3. Handle Body (Mandatory for Uploads/POST)
         if (!bodySection.isEmpty()) {
+            // =================================================================
+            // CRITICAL FIX: DO NOT USE UTF-8 for Binary Files
+            // =================================================================
+            // Use ISO_8859-1 which maps 1-to-1 byte.
+            // Using UTF-8 here is what corrupts your image.
             byte[] bodyBytes = bodySection.getBytes(StandardCharsets.ISO_8859_1);
-            // 2. SHOW DEBUG (Convert to String ONLY for eyes, not for storage)
-            System.out.println("[DEBUG] Body bytes (Hex): " + bytesToHex(bodyBytes));
-            // We use a specific Hex format so we can see the data clearly
+
+            System.out.println("[CH] [PARSER] Converted String to Bytes. Size: " + bodyBytes.length);
+
             request.setBody(bodyBytes);
-            // logger.debug("Set body bytes length=" + request.getBody().length);
+        } else {
+            request.setBody(new byte[0]);
         }
 
         return request;
-    }
-
-    private static String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < Math.min(bytes.length, 50); i++) {
-            sb.append(String.format("%02X ", bytes[i]));
-        }
-        if (bytes.length > 50)
-            sb.append("...");
-        return sb.toString();
-    }
-
+    } 
     /**
      * Parse: GET /path HTTP/1.1
      */

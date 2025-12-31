@@ -6,7 +6,6 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 
 import config.model.WebServerConfig.ServerBlock;
-import http.HttpParser;
 import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
@@ -55,14 +54,13 @@ public class ConnectionHandler {
         // Convert buffer to string
         readBuffer.flip();// Switch to read mode
         byte[] data = new byte[readBuffer.remaining()];
-
         readBuffer.get(data);
 
-        String chunck = new String(data, StandardCharsets.UTF_8);
+        String chunck = new String(data, StandardCharsets.ISO_8859_1);
         rawRequestBuilder.append(chunck);// Append new data to request builder
         totalBytesRead += bytesRead;// Update total bytes read
-
-        System.out.println("[DEBUG] Total bytes read so far: " + totalBytesRead);
+        // =================================================================
+        System.out.println("[CH] Read chunk: " + bytesRead + " bytes. Total accumulated: " + totalBytesRead);
 
         // clear buffer for next read
         readBuffer.clear();
@@ -90,9 +88,11 @@ public class ConnectionHandler {
             return false; // Still waiting for headers
         }
         if (expectedContentLength > 0) {
-            int headerEndIndex = rawRequestBuilder.indexOf("\r\n\r\n");
+            int headerEndIndex = rawRequestBuilder.toString().indexOf("\r\n\r\n");
             int headerSize = headerEndIndex + 4;
             long bodySizeSoFar = totalBytesRead - headerSize;
+
+            System.out.println("[CH] [PARSER] Body progress: " + bodySizeSoFar + " / " + expectedContentLength);
 
             return bodySizeSoFar >= expectedContentLength;
         }
@@ -104,6 +104,8 @@ public class ConnectionHandler {
         try {
             // 1. Parse the request
             httpRequest = ParseRequest.processRequest(rawRequestBuilder.toString());
+            // System.out.println("[DEBUG] Parsed HTTP request: " + httpRequest.getBody()+ "
+            // " + httpRequest.getUri());
             String contentLength = httpRequest.getHeaders().get("Content-Length");
             if (contentLength != null) {
                 try {
@@ -123,6 +125,8 @@ public class ConnectionHandler {
             }
             // 2. Route the request to get a proper HttpResponse
             httpResponse = router.routeRequest(httpRequest, server);
+            // System.out.println("[DEBUG] Generated HTTP response with status: " +
+            // httpResponse.getBody());
             prepareResponseBuffer();
             // 4. Prepare Output Buffer
 

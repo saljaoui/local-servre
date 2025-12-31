@@ -1,16 +1,12 @@
 package handlers;
 
-import config.model.WebServerConfig;
-import config.model.WebServerConfig.ServerBlock;
+ import config.model.WebServerConfig.ServerBlock;
 // import config.model.WebServerConfig.Route;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.stream.Collectors;
+ import java.nio.file.*;
 
 import routing.model.Route;
 

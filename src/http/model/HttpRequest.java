@@ -14,6 +14,8 @@ public class HttpRequest {
     private final Map<String, String> queryParams;
     private final long contentLength;
     private   Map<String, String> cookies;
+     
+
     private byte[] body;
 
     public HttpRequest() {

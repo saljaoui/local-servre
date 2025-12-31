@@ -53,6 +53,7 @@ public class Router {
         }
 
         // Handle file uploads
+        // System.out.println("[DEBUG] Checking upload for route: " + route.getu);
         if (route.isUploadEnabled() && "POST".equalsIgnoreCase(method)) {
             System.out.println("[DEBUG] Handling upload for route: " + route.getUpload().getFileField());
             return uploadHandler.handle(request, route, server);
