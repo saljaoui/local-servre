@@ -36,7 +36,7 @@ public class Router {
         }
 
         if (route.isRedirect()) {
-            // return redirectHandler.handle(request, route, server);
+            return redirectHandler.handle(route);
         }
 
         if (route.isCgiEnabled()) {
