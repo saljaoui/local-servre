@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CGI Message</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0e27;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .glow {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(138, 43, 226, 0.15) 0%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      animation: float 6s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.08); }
+    }
+    .container {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      max-width: 600px;
+      width: 100%;
+      background: rgba(20, 25, 50, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(138, 43, 226, 0.2);
+      border-radius: 12px;
+      padding: 80px 40px;
+    }
+    .code {
+      font-size: 7rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #8a2be2, #da70d6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 20px;
+      line-height: 1;
+    }
+    .title {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 15px;
+    }
+    .field { width: 100%; margin: 0 auto 20px; text-align: left; }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      border-radius: 10px;
+      border: 1px solid rgba(138, 43, 226, 0.25);
+      background: rgba(10, 14, 39, 0.55);
+      color: #eaeaff;
+      padding: 14px;
+      outline: none;
+      font-size: 1rem;
+      line-height: 1.4;
+    }
+    .hint {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: #9aa0b8;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .button {
+      display: inline-block;
+      padding: 12px 35px;
+      background: linear-gradient(135deg, #8a2be2, #da70d6);
+      color: #fff;
+      border-radius: 6px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 1rem;
+    }
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(138, 43, 226, 0.4);
+    }
+    @media (max-width: 600px) {
+      .code { font-size: 4rem; }
+      .title { font-size: 1.4rem; }
+      .container { padding: 50px 30px; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="glow"></div>
+
+  <main class="container">
+    <div class="code">CGI</div>
+    <h1 class="title">Talk to our Web Server</h1>
+
+    <!-- No action => POST back to /cgi -->
+    <form method="POST">
+      <div class="field">
+        <textarea id="msg" name="msg" maxlength="2000" placeholder="Write your message here..."></textarea>
+        <div class="hint">
+          <span id="count">0 / 2000 chars</span>
+          <span>~50ms per character</span>
+        </div>
+      </div>
+
+      <button class="button" type="submit">Send</button>
+    </form>
+  </main>
+
+  <script>
+    const ta = document.getElementById('msg');
+    const count = document.getElementById('count');
+    const max = ta.maxLength || 2000;
+    function update() { count.textContent = `${ta.value.length} / ${max} chars`; }
+    ta.addEventListener('input', update);
+    update();
+  </script>
+</body>
+</html>

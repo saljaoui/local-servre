@@ -11,8 +11,9 @@ public class HttpRequest {
     private String queryString;
     private String httpVersion;
     private Map<String, String> headers;
-    private Map<String, String> queryParams;
-    private Map<String, String> cookies;
+    private final Map<String, String> queryParams;
+    private final long contentLength;
+    private   Map<String, String> cookies;
     private byte[] body;
 
     public HttpRequest() {
@@ -22,6 +23,7 @@ public class HttpRequest {
         this.body = new byte[0];
         this.queryString = "";
         this.httpVersion = "";
+        this.contentLength = 0;
     }
 
     // Getters

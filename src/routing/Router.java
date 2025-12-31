@@ -1,80 +1,99 @@
 package routing;
 
 import config.model.WebServerConfig.ServerBlock;
+import handlers.CgiHandler;
+import handlers.DeleteHandler;
 import handlers.ErrorHandler;
 import handlers.StaticHandler;
+import handlers.RedirectHandler;
+import handlers.UploadHandler;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import routing.model.Route;
 
-// Minimal Router for audit
 public class Router {
 
-    private StaticHandler staticHandler;
-    // private CGIHandler cgiHandler;
-    private ErrorHandler errorHandler;
+    private final StaticHandler staticHandler;
+    private final CgiHandler cgiHandler;
+    private final RedirectHandler redirectHandler;
+    private final ErrorHandler errorHandler;
+    private final DeleteHandler deleteHandler;
+    private final UploadHandler uploadHandler;
 
     public Router() {
         this.staticHandler = new StaticHandler();
-        // this.cgiHandler = new CGIHandler();
+        this.cgiHandler = new CgiHandler();
+        this.redirectHandler = new RedirectHandler();
         this.errorHandler = new ErrorHandler();
+        this.deleteHandler = new DeleteHandler();
+        this.uploadHandler = new UploadHandler();
     }
 
     public HttpResponse routeRequest(HttpRequest request, ServerBlock server) {
-        Route route = routerMatch(request);
+        Route route = routerMatch(request, server);
 
         if (route == null) {
-            // No route matched → return default response to prevent NPE
             return errorHandler.notFound();
         }
 
-        // 2. Dispatch to the correct handler
-        switch (route.getType()) {
-            case STATIC:
-                return staticHandler.handle(request, route);
-            case CGI:
-                // return cgiHandler.handle(request, route);
-            case REDIRECT:
-                // return errorHandler.redirect(route.getRedirectUrl()); 
-            default:
-                // return errorHandler.internalError();
-                return new HttpResponse();
+        String method = request.getMethod();
+
+        // Check if method is allowed for this route
+        if (!route.isMethodAllowed(method)) {
+            return errorHandler.methodNotAllowed(server);
         }
+
+        // Handle redirects first
+        if (route.isRedirect()) {
+            return redirectHandler.handle(request, route, server);
+        }
+
+        // Handle CGI requests
+        if (route.isCgiEnabled()) {
+            return cgiHandler.handle(request, route);
+        }
+
+        // Handle file uploads
+        if (route.isUploadEnabled() && "POST".equalsIgnoreCase(method)) {
+            return uploadHandler.handle(request, route, server);
+        }
+
+        // Handle DELETE requests
+        if ("DELETE".equalsIgnoreCase(method)) {
+            return deleteHandler.handle(request, route, server);
+        }
+
+        // Default: serve static files
+        return staticHandler.handle(request, server, route);
     }
 
-    private Route routerMatch(HttpRequest request) {
-
-        if (request.getPath().equals("/")) {
-
-            return new Route(Route.Type.STATIC, request.getPath());
-
-        } else if (request.getPath().equals("/simo")) {
-
-            return new Route(Route.Type.STATIC, request.getPath());
-
-
-        } else if (request.getPath().endsWith(".py")) {
-            return new Route(Route.Type.CGI, request.getPath());
-        }
-
-        // No match
+    private Route routerMatch(HttpRequest request, ServerBlock server) {
+    if (server.getRoutes() == null || server.getRoutes().isEmpty()) {
         return null;
     }
 
-    // Minimal Route class for internal use
-    public static class Route {
-        enum Type { STATIC, CGI, REDIRECT }
-        private Type type;
-        private String path;
-        private String redirectUrl;
+    String requestPath = request.getPath();
+    Route bestMatch = null;
+    int longestMatch = 0;
 
-        public Route(Type type, String path) {
-            this.type = type;
-            this.path = path;
+    for (Route route : server.getRoutes()) {
+        String routePath = route.getPath();
+
+        // A. Exact Match (e.g., "/")
+        if (requestPath.equals(routePath)) {
+            return route;
         }
 
-        public Type getType() { return type; }
-        public String getPath() { return path; }
-        public String getRedirectUrl() { return redirectUrl; }
-        public void setRedirectUrl(String redirectUrl) { this.redirectUrl = redirectUrl; }
+        // B. Prefix Match (e.g., Route="/uploads" Request="/uploads/file.jpg")
+        // We check if request starts with route path
+        if (requestPath.startsWith(routePath)) {
+            // Ensure route isn't just "/" and request is longer
+            if (routePath.length() > longestMatch) {
+                bestMatch = route;
+                longestMatch = routePath.length();
+            }
+        }
     }
+    return bestMatch;
+}
 }
