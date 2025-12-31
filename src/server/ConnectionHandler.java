@@ -30,6 +30,7 @@ public class ConnectionHandler {
     private boolean headersReceived = false;
     private long expectedContentLength = 0;
     private long totalBytesRead = 0;
+    private boolean isCurrentRequestComplete = false;
 
     public ConnectionHandler(SocketChannel channel, ServerBlock server) {
         this.channel = channel;
@@ -55,8 +56,16 @@ public class ConnectionHandler {
         readBuffer.flip();// Switch to read mode
         byte[] data = new byte[readBuffer.remaining()];
         readBuffer.get(data);
-
         String chunck = new String(data, StandardCharsets.ISO_8859_1);
+
+        if (isCurrentRequestComplete) {
+            System.out.println("[CH] [READ] Resetting builder for new request");
+            rawRequestBuilder.setLength(0); // Clear it
+            totalBytesRead = 0; // Reset counter
+            headersReceived = false;
+            isCurrentRequestComplete = false; // Reset flag
+        }
+
         rawRequestBuilder.append(chunck);// Append new data to request builder
         totalBytesRead += bytesRead;// Update total bytes read
         // =================================================================
@@ -111,6 +120,7 @@ public class ConnectionHandler {
                 try {
                     long contentLen = Long.parseLong(contentLength);
                     long contentBodyLength = server.getClientMaxBodyBytes();
+                    isCurrentRequestComplete = true;
                     if (contentLen > contentBodyLength) {
                         System.err.println("413 Payload Too Large");
                         prepareError(413, "Payload Too Large");

@@ -1,61 +1,70 @@
 package util;
 
+import http.model.HttpRequest;
 import java.util.Arrays;
 
-import http.model.HttpRequest;
-
 public class MultipartParser {
+
     public static byte[] extractFileContent(HttpRequest request) {
         byte[] rawBody = request.getBody();
-
-        // =================================================================
-        // DEBUG 4: Check Input Size
-        // =================================================================
-        System.out.println("[CH] [MULTIPART] Input Body Size: " + (rawBody != null ? 0 : rawBody.length));
-
-        if (rawBody == null || rawBody.length == 0)
+        if (rawBody == null || rawBody.length == 0) {
             return new byte[0];
+        }
 
         try {
             String contentType = request.getHeader("Content-Type");
             if (contentType == null || !contentType.contains("boundary=")) {
-                System.out.println("[CH] [MULTIPART] Not multipart, returning raw body");
+                // Not multipart
                 return rawBody;
             }
 
             String boundaryStr = contentType.split("boundary=")[1].trim();
-            byte[] boundaryBytes = ("\r\n--" + boundaryStr).getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+            // Use UTF-8 for boundary to support various filenames
+            byte[] boundaryBytes = ("\r\n--" + boundaryStr).getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
-            System.out.println("[CH] [MULTIPART] Boundary: " + boundaryStr);
+            // =================================================================
+            // THE FIX: Search for the FIRST boundary AFTER the preamble
+            // =================================================================
+            
+            // Start searching from index 1, not 0. Why?
+            // Because the very first bytes might be the boundary start (e.g., "----WebKit...").
+            // If we search from 0, we find the "Start" boundary immediately, which is wrong.
+            // We want to find the first "End" boundary (which marks the start of the content).
+            // Actually, the structure is: --Boundary (Start) -> Headers -> --Boundary (Start/Content).
+            // We want to find the SECOND occurrence of the boundary to isolate the content.
+            
+            int firstBoundaryIndex = indexOf(rawBody, boundaryBytes, 0);
+            if (firstBoundaryIndex == -1) return rawBody;
 
-            int headerStart = indexOf(rawBody, boundaryBytes, 0);
-            if (headerStart == -1)
-                return rawBody;
-
-            // Find end of headers (\r\n\r\n)
-            byte[] headerDelimiter = new byte[] { '\r', '\n', '\r', '\n' };
-            int contentStart = indexOf(rawBody, headerDelimiter, headerStart);
-
+            // Now, we are likely at the start of the FIRST Part.
+            // We need to find the header delimiter AFTER this first boundary.
+            byte[] headerDelimiter = new byte[]{'\r', '\n', '\r', '\n'};
+            
+            // Find start of content (after \r\n\r\n)
+            int contentStart = indexOf(rawBody, headerDelimiter, firstBoundaryIndex);
             if (contentStart == -1) {
-                System.out.println("[CH] [MULTIPART] ERROR: Header Delimiter not found!");
-                return rawBody;
+                // No headers found? Assume content starts right after boundary?
+                contentStart = firstBoundaryIndex + boundaryBytes.length;
+            } else {
+                contentStart += 4; // Skip \r\n\r\n
             }
 
-            int contentEnd = rawBody.length; // Default to end
-            int closingBoundaryIndex = indexOf(rawBody, boundaryBytes, contentStart + 4);
-
-            if (closingBoundaryIndex > 0) {
-                contentEnd = closingBoundaryIndex;
+            // Find the NEXT boundary (the end of the content)
+            int contentEnd = indexOf(rawBody, boundaryBytes, contentStart);
+            if (contentEnd == -1) {
+                // Fallback: If we can't find the end, just take everything to the end
+                contentEnd = rawBody.length;
             }
 
             // =================================================================
-            // DEBUG 5: Check Extraction Size
+            // DEBUG OUTPUT
             // =================================================================
-            int extractedSize = (contentEnd - (contentStart + 4));
-            System.out.println("[CH] [MULTIPART] Extracted Content Size: " + extractedSize + " bytes");
+            System.out.println("[CH] [MULTIPART] First Boundary at: " + firstBoundaryIndex);
+            System.out.println("[CH] [MULTIPART] Content Start: " + contentStart);
+            System.out.println("[CH] [MULTIPART] Content End: " + contentEnd);
+            System.out.println("[CH] [MULTIPART] Extracted Size: " + (contentEnd - contentStart));
 
-            byte[] result = Arrays.copyOfRange(rawBody, contentStart + 4, contentEnd);
-            return result;
+            return Arrays.copyOfRange(rawBody, contentStart, contentEnd);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -64,7 +73,8 @@ public class MultipartParser {
     }
 
     private static int indexOf(byte[] source, byte[] target, int fromIndex) {
-        outer: for (int i = fromIndex; i < source.length - target.length + 1; i++) {
+        outer:
+        for (int i = fromIndex; i < source.length - target.length + 1; i++) {
             for (int j = 0; j < target.length; j++) {
                 if (source[i + j] != target[j]) {
                     continue outer;
