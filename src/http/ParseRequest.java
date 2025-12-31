@@ -7,7 +7,7 @@ import util.SonicLogger;
 
 public class ParseRequest {
     private static final SonicLogger logger = SonicLogger.getLogger(ParseRequest.class);
-    
+
     // Requirement: Parse HTTP messages manually
     private static final String HEADER_SEPARATOR = "\r\n\r\n";
 
@@ -22,15 +22,13 @@ public class ParseRequest {
 
         // 1. Split Header and Body
         int headerEndIndex = requestData.indexOf(HEADER_SEPARATOR);
-        
+
         if (headerEndIndex == -1) {
             throw new Exception("Invalid HTTP request: no header separator");
         }
 
         String headerSection = requestData.substring(0, headerEndIndex);
         String bodySection = requestData.substring(headerEndIndex + 4);
-
-        // logger.debug("Header end index=" + headerEndIndex + " body length=" + bodySection.length());
 
         // 2. Split Headers into lines
         String[] linesHeader = headerSection.split("\r\n");
@@ -45,11 +43,25 @@ public class ParseRequest {
 
         // 3. Handle Body (Mandatory for Uploads/POST)
         if (!bodySection.isEmpty()) {
-            request.setBody(bodySection.getBytes(StandardCharsets.UTF_8));
+            byte[] bodyBytes = bodySection.getBytes(StandardCharsets.ISO_8859_1);
+            // 2. SHOW DEBUG (Convert to String ONLY for eyes, not for storage)
+            System.out.println("[DEBUG] Body bytes (Hex): " + bytesToHex(bodyBytes));
+            // We use a specific Hex format so we can see the data clearly
+            request.setBody(bodyBytes);
             // logger.debug("Set body bytes length=" + request.getBody().length);
         }
-        
+
         return request;
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(bytes.length, 50); i++) {
+            sb.append(String.format("%02X ", bytes[i]));
+        }
+        if (bytes.length > 50)
+            sb.append("...");
+        return sb.toString();
     }
 
     /**
@@ -57,22 +69,24 @@ public class ParseRequest {
      */
     private static void parseRequestLine(String line, HttpRequest request) {
         String[] parts = line.split(" ");
-        
+
         if (parts.length < 2) {
             return; // Invalid request line
         }
-        
+
         request.setMethod(parts[0]);
         request.setUri(parts[1]);
-        
-        // Set path (simple assignment, no query parsing as it's not a mandatory requirement)
+
+        // Set path (simple assignment, no query parsing as it's not a mandatory
+        // requirement)
         request.setPath(parts[1]);
-        
+
         if (parts.length > 2) {
             request.setHttpVersion(parts[2]);
         }
-        
-        // logger.debug("Parsed Request Line: Method=" + request.getMethod() + " Path=" + request.getPath());
+
+        // logger.debug("Parsed Request Line: Method=" + request.getMethod() + " Path="
+        // + request.getPath());
     }
 
     /**
@@ -80,12 +94,13 @@ public class ParseRequest {
      */
     private static void parseHeaderLine(String line, HttpRequest request) {
         int colonIndex = line.indexOf(':');
-        
-        if (colonIndex <= 0) return;
-        
+
+        if (colonIndex <= 0)
+            return;
+
         String name = line.substring(0, colonIndex).trim();
         String value = line.substring(colonIndex + 1).trim();
-        
+
         // Store generic header
         request.setHeaders(name, value);
         // logger.debug("Header added: " + name + "=" + value);
@@ -100,7 +115,8 @@ public class ParseRequest {
      * Parse Cookie: sessionId=abc123; userId=42
      */
     private static void parseCookieHeader(String cookieValue, HttpRequest request) {
-        if (cookieValue == null || cookieValue.isEmpty()) return;
+        if (cookieValue == null || cookieValue.isEmpty())
+            return;
 
         String[] cookies = cookieValue.split(";");
 

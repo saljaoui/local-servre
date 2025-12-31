@@ -22,7 +22,7 @@ public class HttpParser {
 
         // 1. Split Header and Body
         int headerEndIndex = requestData.indexOf(HEADER_SEPARATOR);
-        
+            System.out.println(" debug: headerEndIndex=" + headerEndIndex);
         if (headerEndIndex == -1) {
             throw new Exception("Invalid HTTP request: no header separator");
         }

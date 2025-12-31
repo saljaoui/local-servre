@@ -31,13 +31,12 @@ public class Router {
 
     public HttpResponse routeRequest(HttpRequest request, ServerBlock server) {
         Route route = routerMatch(request, server);
-
-        if (route == null) {
+         if (route == null) {
             return errorHandler.notFound();
         }
 
         String method = request.getMethod();
-
+        System.err.println();
         // Check if method is allowed for this route
         if (!route.isMethodAllowed(method)) {
             return errorHandler.methodNotAllowed(server);
@@ -55,6 +54,7 @@ public class Router {
 
         // Handle file uploads
         if (route.isUploadEnabled() && "POST".equalsIgnoreCase(method)) {
+            System.out.println("[DEBUG] Handling upload for route: " + route.getUpload().getFileField());
             return uploadHandler.handle(request, route, server);
         }
 

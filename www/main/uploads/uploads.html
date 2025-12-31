@@ -236,6 +236,8 @@
                     listUploads();
                 }
             } catch (err) {
+                console.log(err);
+                
                 responseEl.textContent = 'Error: ' + err.message;
             }
         }

@@ -14,11 +14,13 @@ import routing.Router;
 
 public class ConnectionHandler {
 
-    // private static final SonicLogger logger = SonicLogger.getLogger(ConnectionHandler.class);
+    // private static final SonicLogger logger =
+    // SonicLogger.getLogger(ConnectionHandler.class);
     private final SocketChannel channel;
     private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
     private ByteBuffer writeBuffer;
-    // We use StringBuilder because modifying Strings (+=) is very slow and memory-heavy
+    // We use StringBuilder because modifying Strings (+=) is very slow and
+    // memory-heavy
     private final StringBuilder rawRequestBuilder = new StringBuilder();
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
@@ -35,7 +37,8 @@ public class ConnectionHandler {
         this.server = server;
         this.router = new Router();
     }
- /**
+
+    /**
      * THE READER
      * 1. Reads bytes from network.
      * 2. Converts to String.
@@ -44,7 +47,7 @@ public class ConnectionHandler {
     // Read data from client - returns true when complete
     public boolean read() throws IOException {
         int bytesRead = channel.read(readBuffer);
-System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
+        System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
         if (bytesRead == -1) {
             throw new IOException("Client closed connection");
         }
@@ -56,11 +59,11 @@ System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
         readBuffer.get(data);
 
         String chunck = new String(data, StandardCharsets.UTF_8);
-        rawRequestBuilder.append(chunck);// Append new data to request builder 
-        totalBytesRead += bytesRead;//  Update total bytes read
+        rawRequestBuilder.append(chunck);// Append new data to request builder
+        totalBytesRead += bytesRead;// Update total bytes read
 
         System.out.println("[DEBUG] Total bytes read so far: " + totalBytesRead);
-       
+
         // clear buffer for next read
         readBuffer.clear();
 
@@ -120,8 +123,8 @@ System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
             }
             // 2. Route the request to get a proper HttpResponse
             httpResponse = router.routeRequest(httpRequest, server);
-// 4. Prepare Output Buffer
             prepareResponseBuffer();
+            // 4. Prepare Output Buffer
 
         } catch (Exception ex) {
             System.getLogger(ConnectionHandler.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
@@ -159,14 +162,17 @@ System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
                 responseBuilder.append(k).append(": ").append(v).append("\r\n");
             });
         }
+        if (!httpResponse.getHeaders().containsKey("Access-Controller-All-Origin")) {
+            responseBuilder.append("Access-Control-Allow-Origin: *\r\n");
+        }
+        if (!httpResponse.getHeaders().containsKey("Access-Control-Allow-Methods")) {
+            responseBuilder.append("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n");
+        }
 
-        // Add Content-Length if not already set
-        // if (!httpResponse.getHeaders().containsKey("Content-Length")) {
-        //     int length = httpResponse.getBody() != null ? httpResponse.getBody().length : 0;
-        //     responseBuilder.append("Content-Length: ").append(length).append("\r\n");
-        // }
-        // End headers
-        // Body
+        if (!httpResponse.getHeaders().containsKey("Access-Control-Allow-Headers")) {
+            responseBuilder.append("Access-Control-Allow-Headers: Content-Type, Authorization\r\n");
+        }
+
         byte[] body = httpResponse.getBody() != null ? httpResponse.getBody() : new byte[0];
 
         // Auto-add Content-Length if missing

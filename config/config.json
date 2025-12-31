@@ -39,7 +39,7 @@
         },
         {
           "path": "/uploads",
-          "methods": ["GET", "POST", "DELETE"],
+          "methods": ["POST", "DELETE", "OPTIONS"],
           "root": "./www/main/uploads",
           "index": "uploads.html",
           "autoIndex": true,

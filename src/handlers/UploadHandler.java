@@ -25,6 +25,7 @@ public class UploadHandler {
         
         // Check if upload is enabled for this route
         Upload upload = route.getUpload();
+        // System.err.println("[DEBUG] Upload config: " + request.get);
         if (upload == null || !upload.isEnabled()) {
             response.setStatusCode(403);
             response.setBody("Forbidden: Upload not enabled for this route".getBytes());
@@ -34,7 +35,7 @@ public class UploadHandler {
         
         // Check request method
         String method = request.getMethod();
-        if (!"POST".equalsIgnoreCase(method)) {
+         if (!"POST".equalsIgnoreCase(method)) {
             response.setStatusCode(405);
             response.setBody("Method Not Allowed: Only POST method is supported for uploads".getBytes());
             response.addHeader("Content-Type", "text/plain");
@@ -48,12 +49,14 @@ public class UploadHandler {
         }
         
         String fileField = upload.getFileField();
+        System.err.println("[DEBUG] Original filename: " + fileField);
         if (fileField == null || fileField.isEmpty()) {
             fileField = "file";
         }
         
         // Ensure upload directory exists
         File uploadDirectory = new File(uploadDir);
+        System.err.println("[DEBUG] Upload directory: " + uploadDirectory.getAbsolutePath());
         if (!uploadDirectory.exists()) {
             uploadDirectory.mkdirs();
         }
@@ -75,60 +78,9 @@ public class UploadHandler {
             return response;
         }
         
-        // Generate a unique filename to prevent overwrites
-        String originalFilename = extractFilename(request, fileField);
-        if (originalFilename == null || originalFilename.isEmpty()) {
-            originalFilename = "uploaded_file";
-        }
-        
-        // Sanitize filename to prevent directory traversal
-        originalFilename = new File(originalFilename).getName();
-        
-        String uniqueFilename = System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8) + "_" + originalFilename;
-        File uploadedFile = new File(uploadDirectory, uniqueFilename);
-        
-        try {
-            // Write the file
-            Files.copy(
-                new java.io.ByteArrayInputStream(body),
-                uploadedFile.toPath(),
-                StandardCopyOption.REPLACE_EXISTING
-            );
-            
-            response.setStatusCode(200);
-            String successMessage = "File uploaded successfully: " + originalFilename + 
-                                    " (saved as: " + uniqueFilename + ")";
-            response.setBody(successMessage.getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            response.addHeader("Content-Length", String.valueOf(successMessage.length()));
-            
-        } catch (IOException e) {
-            response.setStatusCode(500);
-            response.setBody(("Internal Server Error: Failed to save file - " + e.getMessage()).getBytes());
-            response.addHeader("Content-Type", "text/plain");
-        }
-        
+ 
         return response;
     }
     
-    /**
-     * Extract filename from request headers or body.
-     * This is a simple implementation - for multipart uploads, 
-     * a full parser would be needed.
-     */
-    private String extractFilename(HttpRequest request, String fieldName) {
-        // Try to get filename from Content-Disposition header
-        String contentDisposition = request.getHeader("Content-Disposition");
-        if (contentDisposition != null && contentDisposition.contains("filename")) {
-            int filenameIndex = contentDisposition.indexOf("filename");
-            int start = contentDisposition.indexOf("\"", filenameIndex);
-            int end = contentDisposition.indexOf("\"", start + 1);
-            if (start >= 0 && end > start) {
-                return contentDisposition.substring(start + 1, end);
-            }
-        }
-        
-        // Return default name
-        return "uploaded_file";
-    }
+  
 }
