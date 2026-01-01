@@ -11,30 +11,26 @@ import routing.model.Route;
 import util.SonicLogger;
 
 public class StaticHandler {
-private static final SonicLogger logger =
-            SonicLogger.getLogger(StaticHandler.class);
+    private static final SonicLogger logger = SonicLogger.getLogger(StaticHandler.class);
+
     public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
         String method = request.getMethod();
 
-        // 1. Resolve Path Logic
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
-        System.out.println("[DEBUG] Resolved file path: " + filePath);
-        switch (method) {
-            case "GET":
-                return handleGet(filePath, request, route);
-            case "POST":
-                return handlePost(filePath, request, route);
-            case "DELETE":
-                // return handleDelete(filePath);
-            default:
+        return switch (method) {
+            case "GET" -> handleGet(filePath, request, route);
+            case "POST" -> handlePost(filePath, request, route);
+            case "DELETE" -> handleDelete(filePath);
+            default -> {
                 HttpResponse err = new HttpResponse();
                 err.setStatusCode(501);
                 err.setStatusMessage("Not Implemented");
                 err.setBody(("Method " + method + " is not implemented for this resource.").getBytes());
                 err.addHeader("Content-Type", "text/plain");
-                return err;
-        }
+                yield err;
+            }
+        };
     }
 
     // --- 1. HANDLE GET (READ FILE) ---
@@ -78,7 +74,8 @@ private static final SonicLogger logger =
         if (route.isUploadEnabled()) {
             try {
                 byte[] body = request.getBody();
-                System.out.println("[DEBUG] Uploading file to: " + filePath+ ", Body length: " + Arrays.toString(body));
+                System.out
+                        .println("[DEBUG] Uploading file to: " + filePath + ", Body length: " + Arrays.toString(body));
                 if (body == null)
                     body = new byte[0];
 
@@ -135,5 +132,9 @@ private static final SonicLogger logger =
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private HttpResponse handleDelete(Path filePath) {
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 }
