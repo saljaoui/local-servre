@@ -1,15 +1,18 @@
 package handlers;
 
+import config.model.WebServerConfig.ServerBlock;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
-import config.model.WebServerConfig.ServerBlock;
-import routing.model.Route;
-
+import http.model.HttpStatus;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import routing.model.Route;
  
 public class DeleteHandler {
+
+    
+    private final ErrorHandler errorHandler = new ErrorHandler();
     
     /**
      * Handle DELETE requests.
@@ -20,10 +23,7 @@ public class DeleteHandler {
         
         String path = request.getPath();
         if (path == null || path.isEmpty() || path.equals("/")) {
-            response.setStatusCode(400);
-            response.setBody("Bad Request: Cannot delete root or empty path".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
         
         // Determine the file to delete based on route and request path
@@ -42,24 +42,15 @@ public class DeleteHandler {
             String canonicalFile = fileToDelete.getCanonicalPath();
             
             if (!canonicalFile.startsWith(canonicalRoot + File.separator)) {
-                response.setStatusCode(403);
-                response.setBody("Forbidden: Cannot delete files outside root directory".getBytes());
-                response.addHeader("Content-Type", "text/plain");
-                return response;
+                return errorHandler.handle(server, HttpStatus.FORBIDDEN);
             }
         } catch (IOException e) {
-            response.setStatusCode(500);
-            response.setBody("Internal Server Error: Path validation failed".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
         
         // Check if file exists
         if (!fileToDelete.exists()) {
-            response.setStatusCode(404);
-            response.setBody("Not Found: File does not exist".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
         
         // Check if it's a directory
@@ -67,10 +58,7 @@ public class DeleteHandler {
             // Optionally: recursively delete or return error
             File[] files = fileToDelete.listFiles();
             if (files != null && files.length > 0) {
-                response.setStatusCode(409);
-                response.setBody("Conflict: Directory is not empty".getBytes());
-                response.addHeader("Content-Type", "text/plain");
-                return response;
+                return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
             }
         }
         
@@ -79,20 +67,16 @@ public class DeleteHandler {
         try {
             deleted = Files.deleteIfExists(fileToDelete.toPath());
         } catch (IOException e) {
-            response.setStatusCode(500);
-            response.setBody(("Internal Server Error: Failed to delete file - " + e.getMessage()).getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
         
         if (deleted) {
-            response.setStatusCode(200);
+            response.setStatusCode(HttpStatus.OK.code);
+            response.setStatusMessage(HttpStatus.OK.message);
             response.setBody(("Deleted: " + path).getBytes());
             response.addHeader("Content-Type", "text/plain");
         } else {
-            response.setStatusCode(404);
-            response.setBody("Not Found: File could not be deleted".getBytes());
-            response.addHeader("Content-Type", "text/plain");
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
         
         return response;

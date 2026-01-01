@@ -7,6 +7,7 @@ public enum HttpStatus {
     NO_CONTENT(204, "No Content"),
     MOVED_PERMANENTLY(301, "Moved Permanently"),
     FOUND(302, "Found"),
+    NOT_IMPLEMENTED(501, "Not Implemented"),
     BAD_REQUEST(400, "Bad Request"),
     FORBIDDEN(403, "Forbidden"),
     NOT_FOUND(404, "Not Found"),

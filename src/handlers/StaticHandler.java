@@ -24,20 +24,18 @@ public class StaticHandler {
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
         System.out.println("[DEBUG] Resolved file path: " + filePath);
+        if (filePath == null) {
+            return errorHandler.handle(server, HttpStatus.FORBIDDEN);
+        }
         switch (method) {
             case "GET":
                 return handleGet(filePath, request, route, server);
             case "POST":
-                return handlePost(filePath, request, route);
+                return handlePost(filePath, request, route, server);
             case "DELETE":
-            // return handleDelete(filePath);
+                // return handleDelete(filePath);
             default:
-                HttpResponse err = new HttpResponse();
-                err.setStatusCode(501);
-                err.setStatusMessage("Not Implemented");
-                err.setBody(("Method " + method + " is not implemented for this resource.").getBytes());
-                err.addHeader("Content-Type", "text/plain");
-                return err;
+                return errorHandler.handle(server, HttpStatus.NOT_IMPLEMENTED);
         }
     }
 
@@ -67,14 +65,14 @@ public class StaticHandler {
 
         } catch (IOException e) {
             logger.error("Static read error: " + file.getPath(), e);
-            response.setStatusCode(500);
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return response;
     }
 
     // --- 2. HANDLE POST (UPLOAD/CREATE FILE) ---
-    private HttpResponse handlePost(Path filePath, HttpRequest request, Route route) {
+    private HttpResponse handlePost(Path filePath, HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
 
         // Check if Upload is enabled in Config
@@ -95,16 +93,10 @@ public class StaticHandler {
                 response.addHeader("Content-Type", "text/plain");
             } catch (IOException e) {
                 e.printStackTrace();
-                response.setStatusCode(500);
-                response.setStatusMessage("Error Saving");
-                response.setBody("Failed to save file.".getBytes());
-                response.addHeader("Content-Type", "text/plain");
+                return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
             }
         } else {
-            response.setStatusCode(403);
-            response.setStatusMessage("Forbidden");
-            response.setBody("Uploads not allowed on this path.".getBytes());
-            response.addHeader("Content-Type", "text/plain");
+            return errorHandler.handle(server, HttpStatus.FORBIDDEN);
         }
         return response;
     }
