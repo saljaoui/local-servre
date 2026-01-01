@@ -9,7 +9,7 @@ import handlers.RedirectHandler;
 import handlers.UploadHandler;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
-import routing.model.Route;
+ import routing.model.Route;
 
 public class Router {
 
@@ -44,7 +44,7 @@ public class Router {
 
         // Handle redirects first
         if (route.isRedirect()) {
-            return redirectHandler.handle(request, route, server);
+            return redirectHandler.handle(route);
         }
 
         // Handle CGI requests

@@ -1,14 +1,13 @@
 package server;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
-
 import config.model.WebServerConfig.ServerBlock;
 import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import routing.Router;
 
 public class ConnectionHandler {
@@ -20,7 +19,7 @@ public class ConnectionHandler {
     private ByteBuffer writeBuffer;
     // We use StringBuilder because modifying Strings (+=) is very slow and
     // memory-heavy
-    private final StringBuilder rawRequestBuilder = new StringBuilder();
+    private final ByteArrayOutputStream rawBytes = new ByteArrayOutputStream();
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
     private final Router router;
@@ -56,89 +55,38 @@ public class ConnectionHandler {
         readBuffer.flip();// Switch to read mode
         byte[] data = new byte[readBuffer.remaining()];
         readBuffer.get(data);
-        String chunck = new String(data, StandardCharsets.ISO_8859_1);
+        readBuffer.clear();
 
-        if (isCurrentRequestComplete) {
-            System.out.println("[CH] [READ] Resetting builder for new request");
-            rawRequestBuilder.setLength(0); // Clear it
-            totalBytesRead = 0; // Reset counter
-            headersReceived = false;
-            isCurrentRequestComplete = false; // Reset flag
-        }
-
-        rawRequestBuilder.append(chunck);// Append new data to request builder
-        totalBytesRead += bytesRead;// Update total bytes read
-        // =================================================================
-        System.out.println("[CH] Read chunk: " + bytesRead + " bytes. Total accumulated: " + totalBytesRead);
+        rawBytes.write(data);
 
         // clear buffer for next read
         readBuffer.clear();
 
         if (!headersReceived) {
-            if (rawRequestBuilder.toString().contains("\r\n\r\n")) {
+            String temp = new String(rawBytes.toByteArray());
+            int idx = temp.indexOf("\r\n\r\n");
+            if (idx != -1) {
                 headersReceived = true;
-                // Parse headers to find Content-Length
-                String headersPart = rawRequestBuilder.toString();
-                String[] headerLines = headersPart.split("\r\n");
-                for (String line : headerLines) {
+                for (String line : temp.substring(0, idx).split("\r\n")) {
                     if (line.toLowerCase().startsWith("content-length:")) {
-                        String val = line.substring("content-length:".length()).trim();
-                        try {
-                            expectedContentLength = Long.parseLong(val);
-                        } catch (NumberFormatException e) {
-                            // Invalid length
-                        }
+                        expectedContentLength = Long.parseLong(line.split(":")[1].trim());
                     }
                 }
             }
         }
 
-        if (!headersReceived) {
-            return false; // Still waiting for headers
-        }
-        if (expectedContentLength > 0) {
-            int headerEndIndex = rawRequestBuilder.toString().indexOf("\r\n\r\n");
-            int headerSize = headerEndIndex + 4;
-            long bodySizeSoFar = totalBytesRead - headerSize;
+        int headerEnd = indexOf(rawBytes.toByteArray(), "\r\n\r\n".getBytes(), 0);
+        int bodySize = rawBytes.size() - (headerEnd + 4);
 
-            System.out.println("[CH] [PARSER] Body progress: " + bodySizeSoFar + " / " + expectedContentLength);
-
-            return bodySizeSoFar >= expectedContentLength;
-        }
-        // HTTP request ends with double newline
-        return true;
+        return expectedContentLength == 0 || bodySize >= expectedContentLength;
     }
 
     public void dispatchRequest() {
         try {
             // 1. Parse the request
-            httpRequest = ParseRequest.processRequest(rawRequestBuilder.toString());
-            // System.out.println("[DEBUG] Parsed HTTP request: " + httpRequest.getBody()+ "
-            // " + httpRequest.getUri());
-            String contentLength = httpRequest.getHeaders().get("Content-Length");
-            if (contentLength != null) {
-                try {
-                    long contentLen = Long.parseLong(contentLength);
-                    long contentBodyLength = server.getClientMaxBodyBytes();
-                    isCurrentRequestComplete = true;
-                    if (contentLen > contentBodyLength) {
-                        System.err.println("413 Payload Too Large");
-                        prepareError(413, "Payload Too Large");
-                        return;
-                    }
-
-                } catch (Exception e) {
-                    System.err.println("400 Bad Request - Invalid Content-Length");
-                    prepareError(400, "Bad Request");
-                    return;
-                }
-            }
-            // 2. Route the request to get a proper HttpResponse
+            httpRequest = ParseRequest.processRequest(rawBytes.toByteArray());
             httpResponse = router.routeRequest(httpRequest, server);
-            // System.out.println("[DEBUG] Generated HTTP response with status: " +
-            // httpResponse.getBody());
             prepareResponseBuffer();
-            // 4. Prepare Output Buffer
 
         } catch (Exception ex) {
             System.getLogger(ConnectionHandler.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
@@ -161,61 +109,33 @@ public class ConnectionHandler {
 
     private void prepareResponseBuffer() {
         // 3. Build raw HTTP response bytes from HttpResponse object
-        StringBuilder responseBuilder = new StringBuilder();
+        byte[] body = httpResponse.getBody() == null ? new byte[0] : httpResponse.getBody();
 
-        // Status line
-        responseBuilder.append("HTTP/1.1 ")
-                .append(httpResponse.getStatusCode())
-                .append(" ")
-                .append(httpResponse.getStatusMessage())
-                .append("\r\n");
+        StringBuilder sb = new StringBuilder();
+        sb.append("HTTP/1.1 ").append(httpResponse.getStatusCode()).append(" OK\r\n");
 
-        // Headers
-        if (httpResponse.getHeaders() != null) {
-            httpResponse.getHeaders().forEach((k, v) -> {
-                responseBuilder.append(k).append(": ").append(v).append("\r\n");
-            });
-        }
-        if (!httpResponse.getHeaders().containsKey("Access-Controller-All-Origin")) {
-            responseBuilder.append("Access-Control-Allow-Origin: *\r\n");
-        }
-        if (!httpResponse.getHeaders().containsKey("Access-Control-Allow-Methods")) {
-            responseBuilder.append("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n");
-        }
+        httpResponse.getHeaders().forEach((k, v) -> sb.append(k).append(": ").append(v).append("\r\n"));
+        sb.append("Content-Length: ").append(body.length).append("\r\n\r\n");
 
-        if (!httpResponse.getHeaders().containsKey("Access-Control-Allow-Headers")) {
-            responseBuilder.append("Access-Control-Allow-Headers: Content-Type, Authorization\r\n");
-        }
-
-        byte[] body = httpResponse.getBody() != null ? httpResponse.getBody() : new byte[0];
-
-        // Auto-add Content-Length if missing
-        if (!httpResponse.getHeaders().containsKey("Content-Length")) {
-            responseBuilder.append("Content-Length: ").append(body.length).append("\r\n");
-        }
-        responseBuilder.append("\r\n");
-
-        byte[] headerBytes = responseBuilder.toString().getBytes(StandardCharsets.UTF_8);
-
-        // Combine headers + body into writeBuffer
-        writeBuffer = ByteBuffer.allocate(headerBytes.length + body.length);
-        writeBuffer.put(headerBytes);
-        writeBuffer.put(body);
-        writeBuffer.flip(); // Prepare buffer for writing
+        byte[] headers = sb.toString().getBytes();
+        writeBuffer = ByteBuffer.allocate(headers.length + body.length);
+        writeBuffer.put(headers).put(body).flip();
     }
 
-    private void prepareError(int code, String message) {
-        String html = "<h1>" + code + " " + message + "</h1>";
-        byte[] body = html.getBytes(StandardCharsets.UTF_8);
+    private void prepareError(int code, String msg) {
+        byte[] body = msg.getBytes();
+        String h = "HTTP/1.1 " + code + " Error\r\nContent-Length: " + body.length + "\r\n\r\n";
+        writeBuffer = ByteBuffer.allocate(h.length() + body.length);
+        writeBuffer.put(h.getBytes()).put(body).flip();
+    }
 
-        String header = "HTTP/1.1 " + code + " Error\r\n"
-                + "Content-Type: text/html\r\n"
-                + "Content-Length: " + body.length + "\r\n"
-                + "Connection: close\r\n\r\n";
-
-        writeBuffer = ByteBuffer.allocate(header.length() + body.length);
-        writeBuffer.put(header.getBytes(StandardCharsets.UTF_8));
-        writeBuffer.put(body);
-        writeBuffer.flip();
+    private static int indexOf(byte[] src, byte[] target, int from) {
+        outer: for (int i = from; i <= src.length - target.length; i++) {
+            for (int j = 0; j < target.length; j++)
+                if (src[i + j] != target[j])
+                    continue outer;
+            return i;
+        }
+        return -1;
     }
 }

@@ -1,8 +1,8 @@
 package http;
 
-import java.nio.charset.StandardCharsets;
-
 import http.model.HttpRequest;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import util.SonicLogger;
 
 public class ParseRequest {
@@ -15,72 +15,37 @@ public class ParseRequest {
      * Parse complete HTTP request from string.
      * Handles: Request Line, Headers (Host, Cookie, Content-Length), Body.
      */
-    public static HttpRequest processRequest(String requestData) throws Exception {
-        System.out.println("[CH] [PARSER] Starting Parse. Input String Length: " + requestData.length());
-        HttpRequest request = new HttpRequest();
+    public static HttpRequest processRequest(byte[] raw) throws Exception {
+       HttpRequest req = new HttpRequest();
+        byte[] sep = "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
 
-        // 1. Split Header and Body
-        int headerEndIndex = requestData.indexOf(HEADER_SEPARATOR);
+        int headerEnd = indexOf(raw, sep, 0);
+        if (headerEnd == -1) throw new Exception("Bad HTTP");
 
-        if (headerEndIndex == -1) {
-            throw new Exception("Invalid HTTP request: no header separator");
-        }
+        String headers = new String(raw, 0, headerEnd, StandardCharsets.ISO_8859_1);
+        String[] lines = headers.split("\r\n");
 
-        String headerSection = requestData.substring(0, headerEndIndex);
-        String bodySection = requestData.substring(headerEndIndex + 4);
-        System.out.println("[CH] [PARSER] Body String Length: " + bodySection.length());
+        parseRequestLine(lines[0], req);
+        for (int i = 1; i < lines.length; i++) parseHeaderLine(lines[i], req);
 
-        // 2. Split Headers into lines
-        String[] linesHeader = headerSection.split("\r\n");
+        int bodyStart = headerEnd + 4;
+        req.setBody(bodyStart < raw.length
+                ? Arrays.copyOfRange(raw, bodyStart, raw.length)
+                : new byte[0]);
 
-        parseRequestLine(linesHeader[0], request);
+        return req;
+    }
 
-        // Lines 1..N are Headers
-        for (int i = 1; i < linesHeader.length; i++) {
-            parseHeaderLine(linesHeader[i], request);
-        }
-
-        // 3. Handle Body (Mandatory for Uploads/POST)
-        if (!bodySection.isEmpty()) {
-            // =================================================================
-            // CRITICAL FIX: DO NOT USE UTF-8 for Binary Files
-            // =================================================================
-            // Use ISO_8859-1 which maps 1-to-1 byte.
-            // Using UTF-8 here is what corrupts your image.
-            byte[] bodyBytes = bodySection.getBytes(StandardCharsets.ISO_8859_1);
-
-            System.out.println("[CH] [PARSER] Converted String to Bytes. Size: " + bodyBytes.length);
-
-            request.setBody(bodyBytes);
-        } else {
-            request.setBody(new byte[0]);
-        }
-
-        return request;
-    } 
     /**
      * Parse: GET /path HTTP/1.1
      */
     private static void parseRequestLine(String line, HttpRequest request) {
-        String[] parts = line.split(" ");
-
-        if (parts.length < 2) {
-            return; // Invalid request line
-        }
-
-        request.setMethod(parts[0]);
-        request.setUri(parts[1]);
-
-        // Set path (simple assignment, no query parsing as it's not a mandatory
-        // requirement)
-        request.setPath(parts[1]);
-
-        if (parts.length > 2) {
-            request.setHttpVersion(parts[2]);
-        }
-
-        // logger.debug("Parsed Request Line: Method=" + request.getMethod() + " Path="
-        // + request.getPath());
+       String[] p =line.split(" ");
+       request.setMethod(p[0]);
+       request.setUri(p[1]);
+       request.setPath(p[1]);
+       request.setHttpVersion(p.length > 2 ? p[2] : "HTTP/1.1");
+ 
     }
 
     /**
@@ -126,4 +91,17 @@ public class ParseRequest {
             }
         }
     }
+
+    private static int indexOf(byte[] source, byte[] target, int fromIndex) {
+        outer: for (int i = fromIndex; i < source.length - target.length + 1; i++) {
+            for (int j = 0; j < target.length; j++) {
+                if (source[i + j] != target[j]) {
+                    continue outer;
+                }
+            }
+            return i;
+        }
+        return -1;
+    }
+
 }

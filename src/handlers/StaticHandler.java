@@ -1,33 +1,32 @@
 package handlers;
 
- import config.model.WebServerConfig.ServerBlock;
-// import config.model.WebServerConfig.Route;
+import config.model.WebServerConfig.ServerBlock;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
-
+import java.io.File;
 import java.io.IOException;
- import java.nio.file.*;
-
+import java.nio.file.*;
+import java.util.Arrays;
 import routing.model.Route;
+import util.SonicLogger;
 
 public class StaticHandler {
-
+private static final SonicLogger logger =
+            SonicLogger.getLogger(StaticHandler.class);
     public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
         String method = request.getMethod();
 
         // 1. Resolve Path Logic
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
+        System.out.println("[DEBUG] Resolved file path: " + filePath);
         switch (method) {
             case "GET":
-                // return handleGet(filePath, request, route);
-
+                return handleGet(filePath, request, route);
             case "POST":
                 return handlePost(filePath, request, route);
-
             case "DELETE":
                 // return handleDelete(filePath);
-
             default:
                 HttpResponse err = new HttpResponse();
                 err.setStatusCode(501);
@@ -38,57 +37,38 @@ public class StaticHandler {
         }
     }
 
-    // // --- 1. HANDLE GET (READ FILE) ---
-    // private HttpResponse handleGet(Path filePath, HttpRequest request, Route
-    // route) {
-    // HttpResponse response = new HttpResponse();
-    // try {
-    // if (filePath == null) {
-    // response.setStatusCode(403); // Security issue
-    // response.setStatusMessage("Forbidden");
-    // return response;
-    // }
+    // --- 1. HANDLE GET (READ FILE) ---
+    private HttpResponse handleGet(Path filePath, HttpRequest request, Route route) {
 
-    // // CHECK: Is it a Directory?
-    // if (Files.isDirectory(filePath)) {
-    // // If autoIndex is ON, show list of files
-    // // if (route.isAutoIndex()) {
-    // // return generateAutoIndex(filePath, request.getPath());
-    // // }
+        HttpResponse response = new HttpResponse();
 
-    // // If autoIndex is OFF, try to serve index.html
-    // String indexFile = (route.getIndex() != null) ? route.getIndex() :
-    // "index.html";
-    // Path indexPath = filePath.resolve(indexFile);
+        String root = route.getRoot();
+        String path = request.getPath();
 
-    // if (Files.exists(indexPath) && !Files.isDirectory(indexPath)) {
-    // return serveFile(indexPath);
-    // } else {
-    // response.setStatusCode(404);
-    // response.setStatusMessage("Not Found");
-    // response.setBody("<h1>404 No Index Found</h1>".getBytes());
-    // response.addHeader("Content-Type", "text/html");
-    // return response;
-    // }
-    // }
+        if (path.equals("/")) {
+            path = "/" + route.getIndex();
+        }
 
-    // // Regular File
-    // if (Files.exists(filePath)) {
-    // return serveFile(filePath);
-    // } else {
-    // response.setStatusCode(404);
-    // response.setStatusMessage("Not Found");
-    // response.setBody("<h1>404 File Not Found</h1>".getBytes());
-    // response.addHeader("Content-Type", "text/html");
-    // }
-    // } catch (IOException e) {
-    // response.setStatusCode(500);
-    // response.setStatusMessage("Internal Error");
-    // response.setBody("<h1>500 Error reading file</h1>".getBytes());
-    // response.addHeader("Content-Type", "text/html");
-    // }
-    // return response;
-    // }
+        File file = new File(root + path);
+
+        if (!file.exists() || file.isDirectory()) {
+            logger.debug("Static 404: " + file.getPath());
+            response.setStatusCode(404);
+            return response;
+        }
+
+        try {
+            byte[] content = Files.readAllBytes(file.toPath());
+            response.setStatusCode(200);
+            response.setBody(content);
+
+        } catch (IOException e) {
+            logger.error("Static read error: " + file.getPath(), e);
+            response.setStatusCode(500);
+        }
+
+        return response;
+    }
 
     // --- 2. HANDLE POST (UPLOAD/CREATE FILE) ---
     private HttpResponse handlePost(Path filePath, HttpRequest request, Route route) {
@@ -98,7 +78,7 @@ public class StaticHandler {
         if (route.isUploadEnabled()) {
             try {
                 byte[] body = request.getBody();
-
+                System.out.println("[DEBUG] Uploading file to: " + filePath+ ", Body length: " + Arrays.toString(body));
                 if (body == null)
                     body = new byte[0];
 

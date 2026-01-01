@@ -1,10 +1,9 @@
 package server;
 
+import config.model.WebServerConfig.ServerBlock;
 import java.io.IOException;
 import java.nio.channels.*;
 import java.util.Iterator;
-
-import config.model.WebServerConfig.ServerBlock;
 import util.SonicLogger;
 
 public class EventLoop {
@@ -74,7 +73,7 @@ public class EventLoop {
             key.cancel();
             return;
         }
-
+        
         // Read data from client
         boolean readComplete = handler.read();
 
