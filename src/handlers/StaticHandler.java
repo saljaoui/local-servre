@@ -6,12 +6,13 @@ import http.model.HttpResponse;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
-import java.util.Arrays;
 import routing.model.Route;
 import util.SonicLogger;
 
 public class StaticHandler {
+
     private static final SonicLogger logger = SonicLogger.getLogger(StaticHandler.class);
+    private final ErrorHandler errorHandler = new ErrorHandler();
 
     public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
         String method = request.getMethod();
@@ -19,9 +20,8 @@ public class StaticHandler {
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
         switch (method) {
-            case "GET": {
+            case "GET":
                 return handleGet(filePath, request, route);
-            }
             case "POST":
                 return handlePost(filePath, request, route);
             case "DELETE":
@@ -84,7 +84,6 @@ public class StaticHandler {
             }
         }
 
-
         return response;
     }
 
@@ -96,10 +95,10 @@ public class StaticHandler {
         if (route.isUploadEnabled()) {
             try {
                 byte[] body = request.getBody();
-                System.out
-                        .println("[DEBUG] Uploading file to: " + filePath + ", Body length: " + Arrays.toString(body));
-                if (body == null)
+                if (body == null) {
+
                     body = new byte[0];
+                }
 
                 // Write body to file
                 Files.write(filePath, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
@@ -125,19 +124,21 @@ public class StaticHandler {
     }
 
     // HELPER: Resolve path safely
-    private Path resolveFilePath(String root, String requestPath, Route route) {
+    private Path resolveFilePath(String root, String relative, Route route) {
         try {
             String routePath = route.getPath(); // e.g., "/uploads"
-            String relative = requestPath;
-
+ 
             // Strip the route prefix
             if (relative.startsWith(routePath)) {
                 relative = relative.substring(routePath.length());
             }
 
-            // If empty, show index
-            if (relative.isEmpty() || relative.equals("/")) {
-                relative = route.getIndex() != null ? "/" + route.getIndex() : "/index.html";
+            if (relative.isEmpty()) {
+                relative = "/";
+            }
+            if (relative.endsWith("/")) {
+                String indexFile = (route.getIndex() != null) ? route.getIndex() : "index.html";
+                relative = relative + indexFile;
             }
 
             // Combine root + route + relative file

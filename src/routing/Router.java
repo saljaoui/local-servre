@@ -32,7 +32,7 @@ public class Router {
     public HttpResponse routeRequest(HttpRequest request, ServerBlock server) {
         Route route = routerMatch(request, server);
          if (route == null) {
-            return errorHandler.notFound();
+            return errorHandler.notFound(server);
         }
 
         var method = request.getMethod(); 

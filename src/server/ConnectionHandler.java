@@ -4,10 +4,14 @@ import config.model.WebServerConfig.ServerBlock;
 import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import http.model.HttpStatus;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import routing.Router;
 
 public class ConnectionHandler {
@@ -108,14 +112,26 @@ public class ConnectionHandler {
     }
 
     private void prepareResponseBuffer() {
-        // 3. Build raw HTTP response bytes from HttpResponse object
         byte[] body = httpResponse.getBody() == null ? new byte[0] : httpResponse.getBody();
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("HTTP/1.1 ").append(httpResponse.getStatusCode()).append(" OK\r\n");
+        // Resolve reason phrase: prefer explicit message, then enum lookup, fallback OK
+        String reason = httpResponse.getStatusMessage();
+        if (reason == null || reason.isEmpty()) {
+            HttpStatus statusEnum = resolveStatus(httpResponse.getStatusCode());
+            reason = statusEnum != null ? statusEnum.message : "OK";
+        }
 
+        // Default headers if missing
+        httpResponse.getHeaders().putIfAbsent(
+                "Date",
+                DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
+        httpResponse.getHeaders().putIfAbsent("Connection", "close");
+        httpResponse.getHeaders().putIfAbsent("Content-Length", String.valueOf(body.length));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("HTTP/1.1 ").append(httpResponse.getStatusCode()).append(" ").append(reason).append("\r\n");
         httpResponse.getHeaders().forEach((k, v) -> sb.append(k).append(": ").append(v).append("\r\n"));
-        sb.append("Content-Length: ").append(body.length).append("\r\n\r\n");
+        sb.append("\r\n");
 
         byte[] headers = sb.toString().getBytes();
         writeBuffer = ByteBuffer.allocate(headers.length + body.length);
@@ -137,5 +153,14 @@ public class ConnectionHandler {
             return i;
         }
         return -1;
+    }
+
+    private HttpStatus resolveStatus(int code) {
+        for (HttpStatus status : HttpStatus.values()) {
+            if (status.code == code) {
+                return status;
+            }
+        }
+        return null;
     }
 }

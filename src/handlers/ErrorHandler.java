@@ -13,7 +13,10 @@ public class ErrorHandler {
         response.setStatusCode(status.code);
         response.setStatusMessage(status.message);
 
-        String errorPagePath = server.getErrorPages().get(String.valueOf(status.code));
+        String errorPagePath = null;
+        if (server != null && server.getErrorPages() != null) {
+            errorPagePath = server.getErrorPages().get(String.valueOf(status.code));
+        }
 
         if (errorPagePath != null) {
             File file = new File(errorPagePath);
@@ -29,12 +32,19 @@ public class ErrorHandler {
             }
         }
 
-        response.setBody(new byte[0]);
+        String fallbackBody = status.code + " " + status.message;
+        response.setBody(fallbackBody.getBytes());
+        response.addHeader("Content-Type", "text/plain; charset=UTF-8");
+        response.addHeader("Content-Length", String.valueOf(fallbackBody.length()));
         return response;
     }
 
     public HttpResponse notFound() {
         return handle(null, http.model.HttpStatus.NOT_FOUND);
+    }
+
+    public HttpResponse notFound(ServerBlock server) {
+        return handle(server, http.model.HttpStatus.NOT_FOUND);
     }
 
     public HttpResponse methodNotAllowed(ServerBlock server) {

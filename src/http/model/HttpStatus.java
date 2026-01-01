@@ -2,6 +2,11 @@ package http.model;
 
 public enum HttpStatus {
 
+    OK(200, "OK"),
+    CREATED(201, "Created"),
+    NO_CONTENT(204, "No Content"),
+    MOVED_PERMANENTLY(301, "Moved Permanently"),
+    FOUND(302, "Found"),
     BAD_REQUEST(400, "Bad Request"),
     FORBIDDEN(403, "Forbidden"),
     NOT_FOUND(404, "Not Found"),
