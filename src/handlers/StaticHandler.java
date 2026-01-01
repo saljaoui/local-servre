@@ -40,12 +40,12 @@ public class StaticHandler {
     private HttpResponse handleGet(Path filePath, HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
         if (filePath == null) {
-                return errorHandler.handle(server, HttpStatus.NOT_FOUND);
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
         File file = filePath.toFile();
         if (!file.exists()) {
-                return errorHandler.handle(server, HttpStatus.NOT_FOUND);
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
         if (file.isDirectory()) {
             if (route.isAutoIndex()) {
@@ -120,7 +120,7 @@ public class StaticHandler {
     private Path resolveFilePath(String root, String relative, Route route) {
         try {
             String routePath = route.getPath(); // e.g., "/uploads"
- 
+
             // Strip the route prefix
             if (relative.startsWith(routePath)) {
                 relative = relative.substring(routePath.length());
@@ -163,13 +163,17 @@ public class StaticHandler {
                 if (f.isDirectory()) {
                     name += "/";
                 }
+                String href = routePath;
+                if (!href.endsWith("/"))
+                    href += "/";
+                href += name;
+
                 html.append("<li><a href=\"")
-                        .append(routePath)
-                        .append(routePath.endsWith("/") ? "" : "/")
-                        .append(name)
+                        .append(href)
                         .append("\">")
                         .append(name)
                         .append("</a></li>");
+
             }
         }
 
