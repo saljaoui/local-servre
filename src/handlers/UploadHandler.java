@@ -4,6 +4,7 @@ import config.model.WebServerConfig.ServerBlock;
 import config.model.WebServerConfig.Upload;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import http.model.HttpStatus;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files; // Import the fixed parser
@@ -13,6 +14,7 @@ import util.MimeTypes;
 import util.MultipartParser;
 
 public class UploadHandler {
+    private final ErrorHandler errorHandler = new ErrorHandler();
 
     public HttpResponse handle(HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
@@ -22,19 +24,13 @@ public class UploadHandler {
         // 1. Check if upload is enabled
         Upload upload = route.getUpload();
         if (upload == null || !upload.isEnabled()) {
-            response.setStatusCode(403);
-            response.setBody("Forbidden: Upload not enabled".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.FORBIDDEN);
         }
 
         // 2. Check Method
         String method = request.getMethod();
         if (!"POST".equalsIgnoreCase(method)) {
-            response.setStatusCode(405);
-            response.setBody("Method Not Allowed".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
 
         // 3. Get Upload Directory
@@ -51,10 +47,7 @@ public class UploadHandler {
         byte[] rawBody = request.getBody();
 
         if (rawBody == null || rawBody.length == 0) {
-            response.setStatusCode(400);
-            response.setBody("Bad Request: No file content provided".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
 
         // 5. Call Parser (Extract Clean Content)
@@ -62,10 +55,7 @@ public class UploadHandler {
         byte[] cleanContent = MultipartParser.extractFileContent(request);
         if (cleanContent == null) {
             System.err.println("[CRITICAL] [UPLOAD] MultipartParser returned NULL! Writing 0 bytes.");
-            response.setStatusCode(500);
-            response.setBody("Internal Error: Failed to parse file content".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         System.out.println("[CH] [UPLOAD] Parser returned clean content. Size: " + cleanContent.length);
@@ -73,10 +63,7 @@ public class UploadHandler {
         // 6. Check Size (Server Limit)
         long maxBodySize = server.getClientMaxBodyBytes();
         if (cleanContent.length > maxBodySize) {
-            response.setStatusCode(413);
-            response.setBody("Payload Too Large: File exceeds maximum allowed size".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
         String fileField = upload.getFileField();
@@ -115,7 +102,8 @@ public class UploadHandler {
             }
 
             // 9. Build Response
-            response.setStatusCode(200);
+            response.setStatusCode(HttpStatus.OK.code);
+            response.setStatusMessage(HttpStatus.OK.message);
             String msg = "File saved: " + filename;
             response.setBody(msg.getBytes());
 
@@ -129,9 +117,7 @@ public class UploadHandler {
 
         } catch (IOException e) {
             e.printStackTrace();
-            response.setStatusCode(500);
-            // response.setBody("Internal Error: " + e.getMessage().getBytes());
-            response.addHeader("Content-Type", "text/plain");
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return response;

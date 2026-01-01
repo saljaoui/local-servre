@@ -3,6 +3,7 @@ package handlers;
 import config.model.WebServerConfig.ServerBlock;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import http.model.HttpStatus;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
@@ -19,76 +20,74 @@ public class StaticHandler {
         // 1. Resolve Path Logic
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
+        System.out.println("[DEBUG] Resolved file path: " + filePath);
+        if (filePath == null) {
+            return errorHandler.handle(server, HttpStatus.FORBIDDEN);
+        }
         switch (method) {
             case "GET":
-                return handleGet(filePath, request, route);
+                return handleGet(filePath, request, route, server);
             case "POST":
-                return handlePost(filePath, request, route);
+                return handlePost(filePath, request, route, server);
             case "DELETE":
                 // return handleDelete(filePath);
             default:
-                HttpResponse err = new HttpResponse();
-                err.setStatusCode(501);
-                err.setStatusMessage("Not Implemented");
-                err.setBody(("Method " + method + " is not implemented for this resource.").getBytes());
-                err.addHeader("Content-Type", "text/plain");
-                return err;
+                return errorHandler.handle(server, HttpStatus.NOT_IMPLEMENTED);
         }
     }
 
     // --- 1. HANDLE GET (READ FILE) ---
-    private HttpResponse handleGet(Path filePath, HttpRequest request, Route route) {
+    private HttpResponse handleGet(Path filePath, HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
         if (filePath == null) {
-            response.setStatusCode(404);
-            response.setBody("404 Not Found".getBytes());
-            return response;
+                return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
         File file = filePath.toFile();
         if (!file.exists()) {
-            response.setStatusCode(404);
-            response.setBody("404 Not Found".getBytes());
-            return response;
+                return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
         if (file.isDirectory()) {
             if (route.isAutoIndex()) {
-                // Generate directory listing
                 String html = generateDirectoryListing(file, request.getPath());
                 response.setStatusCode(200);
                 response.setBody(html.getBytes());
                 response.addHeader("Content-Type", "text/html");
                 return response;
             } else {
-                // Use index file if exists
                 File indexFile = new File(file, route.getIndex() != null ? route.getIndex() : "index.html");
                 if (indexFile.exists() && indexFile.isFile()) {
-                    byte[] content;
                     try {
-                        content = Files.readAllBytes(indexFile.toPath());
+                        byte[] content = Files.readAllBytes(indexFile.toPath());
                         response.setStatusCode(200);
                         response.setBody(content);
                         response.addHeader("Content-Type", util.MimeTypes.getMimeType(indexFile.getName()));
                         return response;
                     } catch (IOException e) {
-                        // TODO Auto-generated catch block
-                        e.printStackTrace();
+                        logger.error("Static index read error: " + indexFile.getPath(), e);
+                        return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
                     }
-
                 } else {
-                    response.setStatusCode(403);
-                    response.setBody("Forbidden: Directory listing not allowed".getBytes());
-                    response.addHeader("Content-Type", "text/plain");
-                    return response;
+                    return errorHandler.handle(server, HttpStatus.FORBIDDEN);
                 }
             }
+        }
+
+        try {
+            byte[] content = Files.readAllBytes(file.toPath());
+            response.setStatusCode(200);
+            response.setBody(content);
+            response.addHeader("Content-Type", util.MimeTypes.getMimeType(file.getName()));
+        } catch (IOException e) {
+            logger.error("Static read error: " + file.getPath(), e);
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return response;
     }
 
     // --- 2. HANDLE POST (UPLOAD/CREATE FILE) ---
-    private HttpResponse handlePost(Path filePath, HttpRequest request, Route route) {
+    private HttpResponse handlePost(Path filePath, HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
 
         // Check if Upload is enabled in Config
@@ -109,16 +108,10 @@ public class StaticHandler {
                 response.addHeader("Content-Type", "text/plain");
             } catch (IOException e) {
                 e.printStackTrace();
-                response.setStatusCode(500);
-                response.setStatusMessage("Error Saving");
-                response.setBody("Failed to save file.".getBytes());
-                response.addHeader("Content-Type", "text/plain");
+                return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
             }
         } else {
-            response.setStatusCode(403);
-            response.setStatusMessage("Forbidden");
-            response.setBody("Uploads not allowed on this path.".getBytes());
-            response.addHeader("Content-Type", "text/plain");
+            return errorHandler.handle(server, HttpStatus.FORBIDDEN);
         }
         return response;
     }

@@ -1,7 +1,9 @@
 package handlers;
 
+import config.model.WebServerConfig.ServerBlock;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import http.model.HttpStatus;
 import routing.model.Route;
 
 import java.io.ByteArrayOutputStream;
@@ -15,61 +17,47 @@ public class CgiHandler {
     private static final String FORM_PATH = "www/main/cgi.html";
     private static final String CGI_ROOT = "cgi-bin";
     private static final String DEFAULT_SCRIPT = "/script.py";
+    private final ErrorHandler errorHandler = new ErrorHandler();
 
-    public HttpResponse handle(HttpRequest request, Route route) {
-        HttpResponse response = new HttpResponse();
+    public HttpResponse handle(HttpRequest request, Route route, ServerBlock server) {
         String path = request.getPath();
         String method = request.getMethod() == null ? "GET" : request.getMethod().toUpperCase();
 
         if ("/cgi".equals(path) || "/cgi/".equals(path)) {
-            if ("GET".equals(method)) return serveForm(response);
-            if ("POST".equals(method)) return runScript(response, request, DEFAULT_SCRIPT);
-            
-            response.setStatusCode(405);
-            response.setBody("Method Not Allowed".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            if ("GET".equals(method)) return serveForm(server);
+            if ("POST".equals(method)) return runScript(request, DEFAULT_SCRIPT, server);
+
+            return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
 
         if (path.startsWith("/cgi/") && path.endsWith(".py")) {
-            return runScript(response, request, path.substring(4));
+            return runScript(request, path.substring(4), server);
         }
 
-        response.setStatusCode(404);
-        response.setBody("Not Found".getBytes());
-        response.addHeader("Content-Type", "text/plain");
-        return response;
+        return errorHandler.handle(server, HttpStatus.NOT_FOUND);
     }
 
-    private HttpResponse serveForm(HttpResponse response) {
+    private HttpResponse serveForm(ServerBlock server) {
         File f = new File(FORM_PATH);
         if (!f.exists() || f.isDirectory()) {
-            response.setStatusCode(404);
-            response.setBody("Not Found".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
         try {
+            HttpResponse response = new HttpResponse();
             response.setStatusCode(200);
             response.setBody(Files.readAllBytes(f.toPath()));
             response.addHeader("Content-Type", "text/html");
             return response;
         } catch (IOException e) {
-            response.setStatusCode(500);
-            response.setBody("Internal Server Error".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    private HttpResponse runScript(HttpResponse response, HttpRequest request, String scriptPath) {
+    private HttpResponse runScript(HttpRequest request, String scriptPath, ServerBlock server) {
         File script = new File(CGI_ROOT + scriptPath);
         if (!script.exists() || script.isDirectory()) {
-            response.setStatusCode(404);
-            response.setBody("CGI script not found".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
         ProcessBuilder pb = new ProcessBuilder("python3", script.getAbsolutePath());
@@ -85,6 +73,7 @@ public class CgiHandler {
 
         try {
             Process p = pb.start();
+            HttpResponse response = new HttpResponse();
             
             try (OutputStream os = p.getOutputStream()) {
                 if (request.getBody() != null && request.getBody().length > 0) {
@@ -94,19 +83,13 @@ public class CgiHandler {
 
             byte[] out = readAll(p.getInputStream());
             if (p.waitFor() != 0) {
-                response.setStatusCode(500);
-                response.setBody(out);
-                response.addHeader("Content-Type", "text/plain");
-                return response;
+                return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
             }
 
             return parseCGI(response, out);
 
         } catch (IOException | InterruptedException e) {
-            response.setStatusCode(500);
-            response.setBody(("CGI error: " + e.getMessage()).getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
