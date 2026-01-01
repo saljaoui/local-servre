@@ -5,55 +5,49 @@ import http.model.HttpResponse;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 
 import config.model.WebServerConfig.ServerBlock;
 
 import routing.model.Route;
+import util.SonicLogger;
 
 public class StaticHandler {
 
-    private final String wwwRoot = "www";
+    private static final SonicLogger logger =
+            SonicLogger.getLogger(StaticHandler.class);
 
-    public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
+    public HttpResponse handle(HttpRequest request,
+                               ServerBlock server,
+                               Route route) {
+
         HttpResponse response = new HttpResponse();
-        route.getPath();
 
-        // Special route: /simo → send sample text
-        if (route.getPath().equals("/simo")) {
-            response.setStatusCode(200);
-            response.setBody("Hello from /simo!".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
+        String root = route.getRoot();
+        String path = request.getPath();
+
+        if (path.equals("/")) {
+            path = "/" + route.getIndex();
         }
 
-        String path = "";
-        if (route.getPath().equals("/")) {
-            path = "/main/index.html";
-        }
-        File file = new File(wwwRoot + path);
+        File file = new File(root + path);
 
         if (!file.exists() || file.isDirectory()) {
+            logger.debug("Static 404: " + file.getPath());
             response.setStatusCode(404);
-            response.setBody("404 Not Found".getBytes());
             return response;
         }
-        
+
         try {
             byte[] content = Files.readAllBytes(file.toPath());
             response.setStatusCode(200);
             response.setBody(content);
 
-            String contentType = Files.probeContentType(Path.of(file.getPath()));
-            if (contentType == null)
-                contentType = "text/plain";
-            response.addHeader("Content-Type", contentType);
-
         } catch (IOException e) {
+            logger.error("Static read error: " + file.getPath(), e);
             response.setStatusCode(500);
-            response.setBody("500 Internal Server Error".getBytes());
         }
 
         return response;
     }
 }
+

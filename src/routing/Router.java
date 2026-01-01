@@ -7,6 +7,7 @@ import handlers.StaticHandler;
 import handlers.RedirectHandler;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import http.model.HttpStatus;
 import routing.model.Route;
 
 public class Router {
@@ -28,11 +29,11 @@ public class Router {
         Route route = routerMatch(request, server);
 
         if (route == null) {
-            return errorHandler.notFound();
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
         if (!route.isMethodAllowed(request.getMethod())) {
-            return errorHandler.methodNotAllowed(server);
+            return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
 
         if (route.isRedirect()) {

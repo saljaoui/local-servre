@@ -33,8 +33,10 @@
         },
         {
           "path": "/simo",
+          "root": "./www/main",
           "methods": [
-            "POST"
+            "POST",
+            "GET"
           ]
         },
         {
