@@ -36,10 +36,8 @@ public class Router {
         }
 
         var method = request.getMethod(); 
-        if ("GET".equals(method)  && request.getPath().equals("/uploads")) {
-            // return errorHandler.faviconNotFound();
-        }
-        if (!route.isMethodAllowed(method)) { 
+       
+        if (!route.isMethodAllowed(method) && !"/uploads".equals(route.getPath())) { 
             return errorHandler.methodNotAllowed(server);
         }
         // Handle redirects first

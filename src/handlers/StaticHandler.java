@@ -11,17 +11,18 @@ import routing.model.Route;
 import util.SonicLogger;
 
 public class StaticHandler {
-private static final SonicLogger logger =
-            SonicLogger.getLogger(StaticHandler.class);
+    private static final SonicLogger logger = SonicLogger.getLogger(StaticHandler.class);
+
     public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
         String method = request.getMethod();
-
         // 1. Resolve Path Logic
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
-         switch (method) {
-            case "GET":
+
+        switch (method) {
+            case "GET": {
                 return handleGet(filePath, request, route);
+            }
             case "POST":
                 return handlePost(filePath, request, route);
             case "DELETE":
@@ -38,33 +39,43 @@ private static final SonicLogger logger =
 
     // --- 1. HANDLE GET (READ FILE) ---
     private HttpResponse handleGet(Path filePath, HttpRequest request, Route route) {
-
         HttpResponse response = new HttpResponse();
 
-        String root = route.getRoot();
-        String path = request.getPath();
-
-        System.out.println("[DEBUG] Serving file from root: " + root + ", path: " + filePath);
-        if (path.equals("/")) {
-            path = "/" + route.getIndex();
+        if (filePath == null) {
+            response.setStatusCode(404);
+            response.setBody("404 Not Found".getBytes());
+            return response;
         }
 
-        File file = new File(root + path);
+        File file = filePath.toFile();
 
         if (!file.exists() || file.isDirectory()) {
-            logger.debug("Static 404: " + file.getPath());
             response.setStatusCode(404);
+            response.setBody("404 Not Found".getBytes());
             return response;
         }
 
         try {
+            // 1. Read file bytes
             byte[] content = Files.readAllBytes(file.toPath());
-            response.setStatusCode(200);
+
+            // 2. Set body
             response.setBody(content);
+            response.setStatusCode(200);
+            response.setStatusMessage("OK");
+
+            // 3. Detect MIME type from extension
+            String mimeType = util.MimeTypes.getMimeType(file.getName());
+            response.addHeader("Content-Type", mimeType);
+
+            // Optional: Content-Length
+            response.addHeader("Content-Length", String.valueOf(content.length));
 
         } catch (IOException e) {
-            logger.error("Static read error: " + file.getPath(), e);
+            e.printStackTrace();
             response.setStatusCode(500);
+            response.setBody("Internal Server Error".getBytes());
+            response.addHeader("Content-Type", "text/plain");
         }
 
         return response;
@@ -78,7 +89,8 @@ private static final SonicLogger logger =
         if (route.isUploadEnabled()) {
             try {
                 byte[] body = request.getBody();
-                System.out.println("[DEBUG] Uploading file to: " + filePath+ ", Body length: " + Arrays.toString(body));
+                System.out
+                        .println("[DEBUG] Uploading file to: " + filePath + ", Body length: " + Arrays.toString(body));
                 if (body == null)
                     body = new byte[0];
 
@@ -110,25 +122,22 @@ private static final SonicLogger logger =
         try {
             String path = uri;
 
-            // 1. Strip Route Prefix from URI
-            // E.g., Route="/uploads", URI="/uploads/img.jpg" -> path="/img.jpg"
-            String routePath = route.getPath();
+            // Strip route prefix if needed
+            String routePath = route.getPath(); // e.g., "/uploads"
             if (path.startsWith(routePath)) {
                 path = path.substring(routePath.length());
             }
 
-            if (path.isEmpty())
-                path = "/";
-            if (path.endsWith("/")) {
-                String indexFile = (route.getIndex() != null) ? route.getIndex() : "index.html";
-                path = path + indexFile;
+            if (path.isEmpty() || path.equals("/")) {
+                // Optional: default file
+                path = "/" + (route.getIndex() != null ? route.getIndex() : "index.html");
             }
 
+            // Normalize path to avoid ../ attacks
             Path resolved = Paths.get(root, path).normalize();
 
-            // Security check
             if (!resolved.startsWith(Paths.get(root).normalize())) {
-                return null; // Hacking attempt
+                return null; // security: outside root
             }
 
             return resolved;
@@ -136,4 +145,5 @@ private static final SonicLogger logger =
             return null;
         }
     }
+
 }
