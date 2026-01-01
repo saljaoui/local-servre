@@ -30,7 +30,7 @@ public class StaticHandler {
             case "POST":
                 return handlePost(filePath, request, route, server);
             case "DELETE":
-                // return handleDelete(filePath);
+                return handleDelete(filePath);
             default:
                 return errorHandler.handle(server, HttpStatus.NOT_IMPLEMENTED);
         }
@@ -179,6 +179,33 @@ public class StaticHandler {
 
         html.append("</ul></body></html>");
         return html.toString();
+    }
+
+    private HttpResponse handleDelete(Path filePath) {
+        HttpResponse response = new HttpResponse();
+
+        File file = filePath.toFile();
+
+        if (!file.exists()) {
+            response.setStatusCode(404);
+            response.setBody("File Not Found ".getBytes());
+            return response;
+        }
+
+        if (file.isDirectory()) {
+            response.setStatusCode(403);
+            response.setBody("Cannot delete a directory".getBytes());
+            return response;
+        }
+        try {
+            Files.delete(filePath);
+            response.setStatusCode(204);
+            response.setBody("File Deleted Successfully".getBytes());
+        } catch (IOException e) {
+            response.setStatusCode(500);
+            response.setBody("Internal Server Error".getBytes());
+        }
+        return response;
     }
 
 }
