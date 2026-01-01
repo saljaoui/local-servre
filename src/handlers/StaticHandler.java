@@ -3,6 +3,7 @@ package handlers;
 import config.model.WebServerConfig.ServerBlock;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
+import http.model.HttpStatus;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
@@ -11,8 +12,11 @@ import routing.model.Route;
 import util.SonicLogger;
 
 public class StaticHandler {
-private static final SonicLogger logger =
-            SonicLogger.getLogger(StaticHandler.class);
+
+    private static final SonicLogger logger
+            = SonicLogger.getLogger(StaticHandler.class);
+    private final ErrorHandler errorHandler = new ErrorHandler();
+
     public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
         String method = request.getMethod();
 
@@ -22,11 +26,11 @@ private static final SonicLogger logger =
         System.out.println("[DEBUG] Resolved file path: " + filePath);
         switch (method) {
             case "GET":
-                return handleGet(filePath, request, route);
+                return handleGet(filePath, request, route, server);
             case "POST":
                 return handlePost(filePath, request, route);
             case "DELETE":
-                // return handleDelete(filePath);
+            // return handleDelete(filePath);
             default:
                 HttpResponse err = new HttpResponse();
                 err.setStatusCode(501);
@@ -38,7 +42,7 @@ private static final SonicLogger logger =
     }
 
     // --- 1. HANDLE GET (READ FILE) ---
-    private HttpResponse handleGet(Path filePath, HttpRequest request, Route route) {
+    private HttpResponse handleGet(Path filePath, HttpRequest request, Route route, ServerBlock server) {
 
         HttpResponse response = new HttpResponse();
 
@@ -53,8 +57,7 @@ private static final SonicLogger logger =
 
         if (!file.exists() || file.isDirectory()) {
             logger.debug("Static 404: " + file.getPath());
-            response.setStatusCode(404);
-            return response;
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
         try {
@@ -78,9 +81,10 @@ private static final SonicLogger logger =
         if (route.isUploadEnabled()) {
             try {
                 byte[] body = request.getBody();
-                System.out.println("[DEBUG] Uploading file to: " + filePath+ ", Body length: " + Arrays.toString(body));
-                if (body == null)
+                System.out.println("[DEBUG] Uploading file to: " + filePath + ", Body length: " + Arrays.toString(body));
+                if (body == null) {
                     body = new byte[0];
+                }
 
                 // Write body to file
                 Files.write(filePath, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
@@ -117,8 +121,9 @@ private static final SonicLogger logger =
                 path = path.substring(routePath.length());
             }
 
-            if (path.isEmpty())
+            if (path.isEmpty()) {
                 path = "/";
+            }
             if (path.endsWith("/")) {
                 String indexFile = (route.getIndex() != null) ? route.getIndex() : "index.html";
                 path = path + indexFile;
