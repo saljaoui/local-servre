@@ -4,8 +4,8 @@ import config.model.WebServerConfig.ServerBlock;
 import handlers.CgiHandler;
 import handlers.DeleteHandler;
 import handlers.ErrorHandler;
-import handlers.StaticHandler;
 import handlers.RedirectHandler;
+import handlers.StaticHandler;
 import handlers.UploadHandler;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
@@ -35,13 +35,13 @@ public class Router {
             return errorHandler.notFound();
         }
 
-        String method = request.getMethod();
-        System.err.println();
-        // Check if method is allowed for this route
-        if (!route.isMethodAllowed(method)) {
+        var method = request.getMethod(); 
+        if ("GET".equals(method)  && request.getPath().equals("/uploads")) {
+            // return errorHandler.faviconNotFound();
+        }
+        if (!route.isMethodAllowed(method)) { 
             return errorHandler.methodNotAllowed(server);
         }
-
         // Handle redirects first
         if (route.isRedirect()) {
             return redirectHandler.handle(route);
@@ -63,8 +63,7 @@ public class Router {
         if ("DELETE".equalsIgnoreCase(method)) {
             return deleteHandler.handle(request, route, server);
         }
-
-        // Default: serve static files
+ 
         return staticHandler.handle(request, server, route);
     }
 
