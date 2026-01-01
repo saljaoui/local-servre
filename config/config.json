@@ -43,7 +43,7 @@
           "path": "/uploads",
           "methods": ["POST", "DELETE", "OPTIONS"],
           "root": "./www/main",
-          "index": "files.html",
+          "index": "",
           "autoIndex": true,
           "upload": {
             "enabled": true,

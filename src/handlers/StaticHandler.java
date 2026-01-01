@@ -18,7 +18,6 @@ public class StaticHandler {
         // 1. Resolve Path Logic
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
-
         switch (method) {
             case "GET": {
                 return handleGet(filePath, request, route);
@@ -40,7 +39,6 @@ public class StaticHandler {
     // --- 1. HANDLE GET (READ FILE) ---
     private HttpResponse handleGet(Path filePath, HttpRequest request, Route route) {
         HttpResponse response = new HttpResponse();
-
         if (filePath == null) {
             response.setStatusCode(404);
             response.setBody("404 Not Found".getBytes());
@@ -48,35 +46,44 @@ public class StaticHandler {
         }
 
         File file = filePath.toFile();
-
-        if (!file.exists() || file.isDirectory()) {
+        if (!file.exists()) {
             response.setStatusCode(404);
             response.setBody("404 Not Found".getBytes());
             return response;
         }
+        if (file.isDirectory()) {
+            if (route.isAutoIndex()) {
+                // Generate directory listing
+                String html = generateDirectoryListing(file, request.getPath());
+                response.setStatusCode(200);
+                response.setBody(html.getBytes());
+                response.addHeader("Content-Type", "text/html");
+                return response;
+            } else {
+                // Use index file if exists
+                File indexFile = new File(file, route.getIndex() != null ? route.getIndex() : "index.html");
+                if (indexFile.exists() && indexFile.isFile()) {
+                    byte[] content;
+                    try {
+                        content = Files.readAllBytes(indexFile.toPath());
+                        response.setStatusCode(200);
+                        response.setBody(content);
+                        response.addHeader("Content-Type", util.MimeTypes.getMimeType(indexFile.getName()));
+                        return response;
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
 
-        try {
-            // 1. Read file bytes
-            byte[] content = Files.readAllBytes(file.toPath());
-
-            // 2. Set body
-            response.setBody(content);
-            response.setStatusCode(200);
-            response.setStatusMessage("OK");
-
-            // 3. Detect MIME type from extension
-            String mimeType = util.MimeTypes.getMimeType(file.getName());
-            response.addHeader("Content-Type", mimeType);
-
-            // Optional: Content-Length
-            response.addHeader("Content-Length", String.valueOf(content.length));
-
-        } catch (IOException e) {
-            e.printStackTrace();
-            response.setStatusCode(500);
-            response.setBody("Internal Server Error".getBytes());
-            response.addHeader("Content-Type", "text/plain");
+                } else {
+                    response.setStatusCode(403);
+                    response.setBody("Forbidden: Directory listing not allowed".getBytes());
+                    response.addHeader("Content-Type", "text/plain");
+                    return response;
+                }
+            }
         }
+
 
         return response;
     }
@@ -118,32 +125,62 @@ public class StaticHandler {
     }
 
     // HELPER: Resolve path safely
-    private Path resolveFilePath(String root, String uri, Route route) {
+    private Path resolveFilePath(String root, String requestPath, Route route) {
         try {
-            String path = uri;
-
-            // Strip route prefix if needed
             String routePath = route.getPath(); // e.g., "/uploads"
-            if (path.startsWith(routePath)) {
-                path = path.substring(routePath.length());
+            String relative = requestPath;
+
+            // Strip the route prefix
+            if (relative.startsWith(routePath)) {
+                relative = relative.substring(routePath.length());
             }
 
-            if (path.isEmpty() || path.equals("/")) {
-                // Optional: default file
-                path = "/" + (route.getIndex() != null ? route.getIndex() : "index.html");
+            // If empty, show index
+            if (relative.isEmpty() || relative.equals("/")) {
+                relative = route.getIndex() != null ? "/" + route.getIndex() : "/index.html";
             }
 
-            // Normalize path to avoid ../ attacks
-            Path resolved = Paths.get(root, path).normalize();
+            // Combine root + route + relative file
+            Path resolved = Paths.get(root, routePath, relative).normalize();
 
+            System.err.println("[DEBUG] Resolving path: " + resolved);
+
+            // Security check: must be under root
             if (!resolved.startsWith(Paths.get(root).normalize())) {
-                return null; // security: outside root
+                return null;
             }
 
             return resolved;
         } catch (Exception e) {
+            e.printStackTrace();
             return null;
         }
+    }
+
+    private String generateDirectoryListing(File dir, String routePath) {
+        StringBuilder html = new StringBuilder();
+        html.append("<html><head><title>Index of ").append(routePath).append("</title></head><body>");
+        html.append("<h1>Index of  ").append(routePath).append("</h1><ul>");
+
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                String name = f.getName();
+                if (f.isDirectory()) {
+                    name += "/";
+                }
+                html.append("<li><a href=\"")
+                        .append(routePath)
+                        .append(routePath.endsWith("/") ? "" : "/")
+                        .append(name)
+                        .append("\">")
+                        .append(name)
+                        .append("</a></li>");
+            }
+        }
+
+        html.append("</ul></body></html>");
+        return html.toString();
     }
 
 }
