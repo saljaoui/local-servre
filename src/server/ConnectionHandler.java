@@ -1,6 +1,7 @@
 package server;
 
 import config.model.WebServerConfig.ServerBlock;
+import handlers.ErrorHandler;
 import http.ParseRequest;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
@@ -13,59 +14,71 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import routing.Router;
+import util.SonicLogger;
 
 public class ConnectionHandler {
 
-    // private static final SonicLogger logger =
-    // SonicLogger.getLogger(ConnectionHandler.class);
+    private static final SonicLogger logger = SonicLogger.getLogger(ConnectionHandler.class);
+
+    private final ErrorHandler errorHandler;
     private final SocketChannel channel;
     private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
     private ByteBuffer writeBuffer;
-    // We use StringBuilder because modifying Strings (+=) is very slow and
-    // memory-heavy
     private final ByteArrayOutputStream rawBytes = new ByteArrayOutputStream();
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
     private final Router router;
     private final ServerBlock server;
 
-    // Track reading state to handle POST bodies correctly
     private boolean headersReceived = false;
     private long expectedContentLength = 0;
     private long totalBytesRead = 0;
-    private boolean isCurrentRequestComplete = false;
 
     public ConnectionHandler(SocketChannel channel, ServerBlock server) {
         this.channel = channel;
         this.server = server;
         this.router = new Router();
+        this.errorHandler = new ErrorHandler();
     }
 
-    /**
-     * THE READER
-     * 1. Reads bytes from network.
-     * 2. Converts to String.
-     * 3. Checks if we have enough data (Headers + Body).
-     */
-    // Read data from client - returns true when complete
-    public boolean read() throws IOException {
+    public ServerBlock getServer() {
+        return server;
+    }
+
+    public boolean read(ServerBlock server) throws IOException {
         int bytesRead = channel.read(readBuffer);
         System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
+
         if (bytesRead == -1) {
-            throw new IOException("Client closed connection");
+            this.close();
+            return false;
         }
 
-        // Convert buffer to string
-        readBuffer.flip();// Switch to read mode
+        totalBytesRead += bytesRead;
+
+        // Check max body size
+        if (totalBytesRead > server.getClientMaxBodyBytes()) {
+            try {
+                httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
+                ByteBuffer buffer = ByteBuffer.wrap(httpResponse.toString().getBytes());
+                while (buffer.hasRemaining()) {
+                    channel.write(buffer);
+                }
+            } catch (IOException e) {
+                logger.error("Failed to send 413 response to client", e);
+            }
+            this.close();
+            return false;
+        }
+
+        // Copy data from buffer to rawBytes
+        readBuffer.flip();
         byte[] data = new byte[readBuffer.remaining()];
         readBuffer.get(data);
-        readBuffer.clear();
-
         rawBytes.write(data);
-
-        // clear buffer for next read
         readBuffer.clear();
 
+        // Parse headers to get Content-Length
         if (!headersReceived) {
             String temp = new String(rawBytes.toByteArray());
             int idx = temp.indexOf("\r\n\r\n");
@@ -79,6 +92,7 @@ public class ConnectionHandler {
             }
         }
 
+        // Check if we have complete request
         int headerEnd = indexOf(rawBytes.toByteArray(), "\r\n\r\n".getBytes(), 0);
         int bodySize = rawBytes.size() - (headerEnd + 4);
 
@@ -87,15 +101,13 @@ public class ConnectionHandler {
 
     public void dispatchRequest() {
         try {
-            // 1. Parse the request
             httpRequest = ParseRequest.processRequest(rawBytes.toByteArray());
             httpResponse = router.routeRequest(httpRequest, server);
-            prepareResponseBuffer();
-
         } catch (Exception ex) {
-            System.getLogger(ConnectionHandler.class.getName()).log(System.Logger.Level.ERROR, (String) null, ex);
-            prepareError(500, "Internal Server Error");
+            logger.error("Error processing request", ex);
+            httpResponse = errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
+        prepareResponseBuffer();
     }
 
     public boolean write() throws IOException {
@@ -104,7 +116,12 @@ public class ConnectionHandler {
         }
 
         channel.write(writeBuffer);
-        return !writeBuffer.hasRemaining();
+
+        if (!writeBuffer.hasRemaining()) {
+            resetForNextRequest();
+            return true;
+        }
+        return false;
     }
 
     public void close() throws IOException {
@@ -114,20 +131,21 @@ public class ConnectionHandler {
     private void prepareResponseBuffer() {
         byte[] body = httpResponse.getBody() == null ? new byte[0] : httpResponse.getBody();
 
-        // Resolve reason phrase: prefer explicit message, then enum lookup, fallback OK
+        // Get status message
         String reason = httpResponse.getStatusMessage();
         if (reason == null || reason.isEmpty()) {
             HttpStatus statusEnum = resolveStatus(httpResponse.getStatusCode());
             reason = statusEnum != null ? statusEnum.message : "OK";
         }
 
-        // Default headers if missing
+        // Set default headers
         httpResponse.getHeaders().putIfAbsent(
                 "Date",
                 DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
         httpResponse.getHeaders().putIfAbsent("Connection", "close");
         httpResponse.getHeaders().putIfAbsent("Content-Length", String.valueOf(body.length));
 
+        // Build response
         StringBuilder sb = new StringBuilder();
         sb.append("HTTP/1.1 ").append(httpResponse.getStatusCode()).append(" ").append(reason).append("\r\n");
         httpResponse.getHeaders().forEach((k, v) -> sb.append(k).append(": ").append(v).append("\r\n"));
@@ -138,18 +156,23 @@ public class ConnectionHandler {
         writeBuffer.put(headers).put(body).flip();
     }
 
-    private void prepareError(int code, String msg) {
-        byte[] body = msg.getBytes();
-        String h = "HTTP/1.1 " + code + " Error\r\nContent-Length: " + body.length + "\r\n\r\n";
-        writeBuffer = ByteBuffer.allocate(h.length() + body.length);
-        writeBuffer.put(h.getBytes()).put(body).flip();
+    private void resetForNextRequest() {
+        rawBytes.reset();
+        headersReceived = false;
+        expectedContentLength = 0;
+        totalBytesRead = 0;
+        httpRequest = null;
+        httpResponse = null;
+        writeBuffer = null;
     }
 
     private static int indexOf(byte[] src, byte[] target, int from) {
         outer: for (int i = from; i <= src.length - target.length; i++) {
-            for (int j = 0; j < target.length; j++)
-                if (src[i + j] != target[j])
+            for (int j = 0; j < target.length; j++) {
+                if (src[i + j] != target[j]) {
                     continue outer;
+                }
+            }
             return i;
         }
         return -1;

@@ -69,13 +69,10 @@ public class EventLoop {
 
     private static void handleRead(SelectionKey key) throws IOException {
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
-        if (handler == null) {
-            key.cancel();
-            return;
-        }
-        
+        ServerBlock server = handler.getServer();
+
         // Read data from client
-        boolean readComplete = handler.read();
+        boolean readComplete = handler.read(server);
 
         if (readComplete) {
             // Process the request
