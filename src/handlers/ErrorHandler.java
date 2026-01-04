@@ -1,14 +1,16 @@
 package handlers;
 
 import config.model.WebServerConfig.ServerBlock;
-import http.model.HttpResponse;
+ import http.model.HttpResponse;
+import http.model.HttpStatus;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 
 public class ErrorHandler {
 
-    public HttpResponse handle(ServerBlock server, http.model.HttpStatus status) {
+    public HttpResponse handle(ServerBlock server,  HttpStatus status) {
         HttpResponse response = new HttpResponse();
         response.setStatusCode(status.code);
         response.setStatusMessage(status.message);
