@@ -51,7 +51,7 @@ public class UploadHandler {
         long fileSize = uploaFile.length();
 
         // 5. Call Parser (Extract Clean Content)
-
+ 
         System.out.println("[CH] [UPLOAD] Calling MultipartParser...");
 
         // 6. Check Size (Server Limit)
@@ -60,10 +60,12 @@ public class UploadHandler {
             return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
-        String filename = System.currentTimeMillis() + "_" +
-                java.util.UUID.randomUUID().toString().substring(0, 8);
+     
+String filename =
+        System.currentTimeMillis() + "_" +
+        java.util.UUID.randomUUID().toString().substring(0, 8);
         // 7. Create destination file
-        File destinationFile = new File(uploadDirectory, filename);
+        File destinationFile = new File(uploadDirectory, filename); 
 
         try {
             // 8. Move temp file to destination
@@ -81,7 +83,7 @@ public class UploadHandler {
             response.setStatusMessage(HttpStatus.OK.message);
             String msg = "File uploaded successfully: " + filename;
             response.setBody(msg.getBytes());
-
+ 
         } catch (IOException e) {
             e.printStackTrace();
             return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);

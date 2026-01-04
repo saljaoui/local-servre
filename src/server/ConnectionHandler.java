@@ -119,8 +119,7 @@ public class ConnectionHandler {
                 if (isMulltipartForm()) {
                     isFileUpload = true;
                     boundary = extractBoundry(temp);
-                    
-                    prepareFileUpload();
+                     prepareFileUpload();
 
                     byte[] bodyData = Arrays.copyOfRange(rawBytes.toByteArray(), idx + 4, rawBytes.size());
                     if (bodyData.length > 0) {
@@ -227,6 +226,7 @@ public class ConnectionHandler {
     }
 
     private void processFileData(byte[] bodyData) throws IOException {
+        System.err.println("here ");
         if (tempFileOutputStream != null) {
             tempFileOutputStream.write(bodyData);
             bytesWrittenToFile += bodyData.length;
