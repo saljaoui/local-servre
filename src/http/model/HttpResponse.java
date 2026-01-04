@@ -24,6 +24,10 @@ public class HttpResponse {
     // Setters
     public void setStatusCode(int statusCode) { this.statusCode = statusCode; }
     public void setStatusMessage(String statusMessage) { this.statusMessage = statusMessage; }
+    public void setStatus(HttpStatus status) {
+        this.statusCode = status.code;
+        this.statusMessage = status.message;
+    }
     public void setHeaders(Map<String, String> headers) { this.headers = headers; }
     public void setBody(byte[] body) { this.body = body; }
 

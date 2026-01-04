@@ -68,7 +68,7 @@ public class StaticHandler {
         if (route.isAutoIndex()) {
             // ✅ Generate directory listing
             String html = generateDirectoryListing(directory, requestPath);
-            response.setStatusCode(200);
+            response.setStatus(HttpStatus.OK);
             response.setBody(html.getBytes());
             response.addHeader("Content-Type", "text/html; charset=UTF-8");
             return response;
@@ -95,7 +95,7 @@ public class StaticHandler {
         
         try {
             byte[] content = Files.readAllBytes(file.toPath());
-            response.setStatusCode(200);
+            response.setStatus(HttpStatus.OK);
             response.setBody(content);
             response.addHeader("Content-Type", util.MimeTypes.getMimeType(file.getName()));
             response.addHeader("Content-Length", String.valueOf(content.length));
@@ -130,9 +130,8 @@ public class StaticHandler {
             
             // Write file
             Files.write(filePath, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            
-            response.setStatusCode(201);
-            response.setStatusMessage("Created");
+
+            response.setStatus(HttpStatus.CREATED);
             response.setBody(("File uploaded: " + filePath.getFileName()).getBytes());
             response.addHeader("Content-Type", "text/plain");
             
@@ -165,8 +164,7 @@ public class StaticHandler {
         // Delete the file
         try {
             Files.delete(filePath);
-            response.setStatusCode(204); // No Content
-            response.setStatusMessage("No Content");
+            response.setStatus(HttpStatus.NO_CONTENT);
         } catch (IOException e) {
             logger.error("Error deleting file: " + filePath, e);
             return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);

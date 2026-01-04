@@ -22,4 +22,13 @@ public enum HttpStatus {
         this.code = code;
         this.message = message;
     }
+
+    public static HttpStatus fromCode(int code) {
+        for (HttpStatus status : values()) {
+            if (status.code == code) {
+                return status;
+            }
+        }
+        return null; // or throw exception, but for now return null
+    }
 }

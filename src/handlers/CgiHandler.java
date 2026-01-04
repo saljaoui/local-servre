@@ -168,8 +168,13 @@ public class CgiHandler {
             }
         }
 
-        response.setStatusCode(statusCode);
-        response.setStatusMessage(statusMsg);
+        HttpStatus status = HttpStatus.fromCode(statusCode);
+        if (status != null) {
+            response.setStatus(status);
+        } else {
+            response.setStatusCode(statusCode);
+            response.setStatusMessage(statusMsg);
+        }
         response.setBody(body);
 
         if (!hasContentType) {

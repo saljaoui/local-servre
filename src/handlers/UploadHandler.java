@@ -79,8 +79,7 @@ String filename =
             System.out.println("[UPLOAD] File size: " + destinationFile.length() + " bytes");
 
             // 9. Build Response
-            response.setStatusCode(HttpStatus.OK.code);
-            response.setStatusMessage(HttpStatus.OK.message);
+            response.setStatus(HttpStatus.OK);
             String msg = "File uploaded successfully: " + filename;
             response.setBody(msg.getBytes());
  

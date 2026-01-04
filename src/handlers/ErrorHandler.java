@@ -12,8 +12,7 @@ public class ErrorHandler {
 
     public HttpResponse handle(ServerBlock server,  HttpStatus status) {
         HttpResponse response = new HttpResponse();
-        response.setStatusCode(status.code);
-        response.setStatusMessage(status.message);
+        response.setStatus(status);
 
         String errorPagePath = null;
         if (server != null && server.getErrorPages() != null) {

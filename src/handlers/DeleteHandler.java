@@ -71,8 +71,7 @@ public class DeleteHandler {
         }
         
         if (deleted) {
-            response.setStatusCode(HttpStatus.OK.code);
-            response.setStatusMessage(HttpStatus.OK.message);
+            response.setStatus(HttpStatus.OK);
             response.setBody(("Deleted: " + path).getBytes());
             response.addHeader("Content-Type", "text/plain");
         } else {
