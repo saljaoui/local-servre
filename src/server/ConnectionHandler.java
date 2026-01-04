@@ -9,6 +9,7 @@ import http.model.HttpStatus;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
@@ -19,6 +20,7 @@ import java.util.Arrays;
 
 import routing.Router;
 import util.SonicLogger;
+import util.MimeTypes;
 
 public class ConnectionHandler {
 
@@ -50,6 +52,9 @@ public class ConnectionHandler {
 
     private boolean skippedMultipartHeaders = false;
     private byte[] boundaryBytes;
+    private boolean inFileContent = false;
+    private boolean foundFileStart = false;
+    private boolean fileComplete = false;
 
     public ConnectionHandler(SocketChannel channel, ServerBlock server) {
         this.channel = channel;
@@ -64,7 +69,6 @@ public class ConnectionHandler {
 
     public boolean read(ServerBlock server) throws IOException {
         int bytesRead = channel.read(readBuffer);
-        // System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
 
         if (bytesRead == -1) {
             this.close();
@@ -75,7 +79,6 @@ public class ConnectionHandler {
 
         // Check max body size
         if (totalBytesRead > server.getClientMaxBodyBytes()) {
-            // System.err.println("here ");
             try {
                 cleanupTempFile();
                 httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
@@ -85,28 +88,26 @@ public class ConnectionHandler {
                 }
             } catch (IOException e) {
                 httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
-                // logger.error("Failed to send 413 response to client", e);
             }
             this.close();
             return false;
         }
-        // Copy data from buffer to rawBytes
+        
+        // Process the data
         readBuffer.flip();
         byte[] data = new byte[readBuffer.remaining()];
         readBuffer.get(data);
         readBuffer.clear();
+        
         if (rawBytes == null) {
             rawBytes = new ByteArrayOutputStream();
         }
         rawBytes.write(data);
+        
         // Parse headers to get Content-Length
         if (!headersParsed) {
             String temp = new String(rawBytes.toByteArray());
             int idx = temp.indexOf("\r\n\r\n");
-            if (rawBytes == null) {
-                rawBytes = new ByteArrayOutputStream();
-            }
-
             if (idx != -1) {
                 headersParsed = true;
 
@@ -119,21 +120,23 @@ public class ConnectionHandler {
                 if (isMulltipartForm()) {
                     isFileUpload = true;
                     boundary = extractBoundry(temp);
-                     prepareFileUpload();
+                    boundaryBytes = ("\r\n--" + boundary).getBytes();
+                    prepareFileUpload();
 
+                    // Process any body data that came with the headers
                     byte[] bodyData = Arrays.copyOfRange(rawBytes.toByteArray(), idx + 4, rawBytes.size());
                     if (bodyData.length > 0) {
                         processFileData(bodyData);
                     }
                 }
             }
-        } else if (isFileUpload) {
+        } else if (isFileUpload && !fileComplete) {
             processFileData(data);
         }
 
         if (headersParsed) {
             if (isFileUpload) {
-                requestComplete = expectedContentLength == 0 || bytesWrittenToFile >= expectedContentLength;
+                requestComplete = fileComplete || (expectedContentLength == 0 || bytesWrittenToFile >= expectedContentLength);
             } else {
                 // For regular requests, check if we have the complete body
                 requestComplete = expectedContentLength == 0 || rawBytes.size() >= expectedContentLength;
@@ -226,28 +229,101 @@ public class ConnectionHandler {
     }
 
     private void processFileData(byte[] bodyData) throws IOException {
-        System.err.println("here ");
-        if (tempFileOutputStream != null) {
-            tempFileOutputStream.write(bodyData);
-            bytesWrittenToFile += bodyData.length;
-            // Log progress for large uploads
-            if (bytesWrittenToFile % (1024 * 1024) == 0) { // Every 1MB
-                System.out.println("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB of " +
-                        (expectedContentLength / 1024 / 1024) + "MB");
+        if (tempFileOutputStream == null || fileComplete) {
+            return;
+        }
+        
+        // If we haven't found the start of the file content yet
+        if (!foundFileStart) {
+            String dataStr = new String(bodyData);
+            int contentStart = dataStr.indexOf("\r\n\r\n");
+            
+            if (contentStart != -1) {
+                // Found the end of headers, start of file content
+                foundFileStart = true;
+                inFileContent = true;
+                
+                // Write only the content after the headers
+                byte[] fileContent = Arrays.copyOfRange(bodyData, contentStart + 4, bodyData.length);
+                
+                // Check if this content already contains the end boundary
+                int boundaryPos = findBoundary(fileContent, boundaryBytes);
+                if (boundaryPos != -1) {
+                    // Write content up to the boundary
+                    tempFileOutputStream.write(fileContent, 0, boundaryPos);
+                    bytesWrittenToFile += boundaryPos;
+                    inFileContent = false;
+                    fileComplete = true;
+                    System.out.println("File upload complete: " + bytesWrittenToFile + " bytes");
+                } else {
+                    // Write all content
+                    tempFileOutputStream.write(fileContent);
+                    bytesWrittenToFile += fileContent.length;
+                }
+            }
+            // If we haven't found the start yet, don't write anything
+        } else if (inFileContent) {
+            // We're in the file content, check for the end boundary
+            int boundaryPos = findBoundary(bodyData, boundaryBytes);
+            
+            if (boundaryPos != -1) {
+                // Found the end boundary, write content up to it
+                tempFileOutputStream.write(bodyData, 0, boundaryPos);
+                bytesWrittenToFile += boundaryPos;
+                inFileContent = false;
+                fileComplete = true;
+                System.out.println("File upload complete: " + bytesWrittenToFile + " bytes");
+            } else {
+                // No boundary yet, write all content
+                tempFileOutputStream.write(bodyData);
+                bytesWrittenToFile += bodyData.length;
             }
         }
+        
+        // Log progress for large uploads
+        if (bytesWrittenToFile % (1024 * 1024) == 0) { // Every 1MB
+            System.out.println("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB of " +
+                    (expectedContentLength / 1024 / 1024) + "MB");
+        }
+    }
+    
+    // Helper method to find boundary in byte array
+    private int findBoundary(byte[] data, byte[] boundary) {
+        if (data == null || boundary == null || data.length < boundary.length) {
+            return -1;
+        }
+        
+        for (int i = 0; i <= data.length - boundary.length; i++) {
+            boolean match = true;
+            for (int j = 0; j < boundary.length; j++) {
+                if (data[i + j] != boundary[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void prepareFileUpload() throws IOException {
-
         tempFile = File.createTempFile("uploads", ".tmp");
         tempFileOutputStream = new FileOutputStream(tempFile);
+        
+        // Create metadata file
+        File metadataFile = new File(tempFile.getParent(), tempFile.getName() + ".meta");
+        try (FileWriter writer = new FileWriter(metadataFile)) {
+            writer.write("original_filename=" + getUploadFileName() + "\n");
+            writer.write("upload_time=" + System.currentTimeMillis() + "\n");
+        }
 
         System.out.println("Created temp file: " + tempFile.getPath());
+        System.out.println("Created metadata file: " + metadataFile.getPath());
     }
 
     private String extractBoundry(String headeString) {
-        // Auto-generated method stub
         String[] lines = headeString.split("\r\n");
         for (String line : lines) {
             if (line.toLowerCase().startsWith("content-type: multipart/form-data")) {
@@ -332,7 +408,6 @@ public class ConnectionHandler {
     }
 
     private void resetForNextRequest() {
-
         headersReceived = false;
         expectedContentLength = 0;
         totalBytesRead = 0;
@@ -342,6 +417,9 @@ public class ConnectionHandler {
         requestComplete = false;
         boundary = null;
         uploadFileName = null;
+        foundFileStart = false;
+        inFileContent = false;
+        fileComplete = false;
 
         if (rawBytes != null) {
             rawBytes.reset();
