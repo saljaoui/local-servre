@@ -6,15 +6,15 @@ import routing.model.Route;
 
 public class WebServerConfig {
 
-    private Timeouts timeouts;
+    private long timeouts;
     private List<ServerBlock> servers;
 
     // Getters and Setters
-    public Timeouts getTimeouts() {
+    public long getTimeouts() {
         return timeouts;
     }
 
-    public void setTimeouts(Timeouts timeouts) {
+    public void setTimeouts(long timeouts) {
         this.timeouts = timeouts;
     }
 
@@ -243,8 +243,8 @@ public class WebServerConfig {
 
 public void validate() throws IllegalArgumentException {
     // 1. Timeouts
-    if (timeouts == null) {
-        throw new IllegalArgumentException("Timeouts configuration is required");
+    if (timeouts <= 0) {
+        throw new IllegalArgumentException("Timeouts must be positive");
     }
 
     // 2. At least one server
