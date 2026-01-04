@@ -1,6 +1,7 @@
 package handlers;
 
 import config.model.WebServerConfig.ServerBlock;
+import handlers.model.Cgi;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
 import http.model.HttpStatus;
@@ -11,135 +12,199 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.Files;
+import java.util.Locale;
 
 public class CgiHandler {
-    private static final String FORM_PATH = "www/main/cgi.html";
-    private static final String CGI_ROOT = "cgi-bin";
-    private static final String DEFAULT_SCRIPT = "/script.py";
     private final ErrorHandler errorHandler = new ErrorHandler();
 
-    public HttpResponse handle(HttpRequest request, Route route, ServerBlock server) {
-        String path = request.getPath();
-        String method = request.getMethod() == null ? "GET" : request.getMethod().toUpperCase();
-
-        if ("/cgi".equals(path) || "/cgi/".equals(path)) {
-            if ("GET".equals(method)) return serveForm(server);
-            if ("POST".equals(method)) return runScript(request, DEFAULT_SCRIPT, server);
-
-            return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
+    public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
+        Cgi cfg = route != null ? route.getCgi() : null;
+        if (cfg == null || !cfg.isEnabled()) {
+            return error(server, HttpStatus.NOT_FOUND);
         }
 
-        if (path.startsWith("/cgi/") && path.endsWith(".py")) {
-            return runScript(request, path.substring(4), server);
+        String scriptPath = extractScriptPath(request.getPath(), route.getPath());
+        if (scriptPath.isEmpty()) {
+            return error(server, HttpStatus.NOT_FOUND);
         }
 
-        return errorHandler.handle(server, HttpStatus.NOT_FOUND);
+        return runScript(request, scriptPath, cfg, server);
     }
 
-    private HttpResponse serveForm(ServerBlock server) {
-        File f = new File(FORM_PATH);
-        if (!f.exists() || f.isDirectory()) {
-            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
-        }
+    private String extractScriptPath(String requestPath, String routePath) {
+        requestPath = requestPath == null ? "" : requestPath;
+        routePath = routePath == null ? "" : routePath;
+        
+        String script = requestPath.startsWith(routePath) 
+            ? requestPath.substring(routePath.length()) 
+            : requestPath;
+        
+        return script.startsWith("/") ? script.substring(1) : script;
+    }
+
+    private HttpResponse runScript(HttpRequest request, String scriptPath, Cgi cfg, ServerBlock server) {
+        int queryIdx = scriptPath.indexOf('?');
+        String cleanPath = queryIdx >= 0 ? scriptPath.substring(0, queryIdx) : scriptPath;
+
+        File binDir = new File(cfg.getBinDir());
+        File script = new File(binDir, cleanPath);
 
         try {
-            HttpResponse response = new HttpResponse();
-            response.setStatusCode(200);
-            response.setBody(Files.readAllBytes(f.toPath()));
-            response.addHeader("Content-Type", "text/html");
-            return response;
+            String scriptCanonical = script.getCanonicalPath();
+            if (!scriptCanonical.startsWith(binDir.getCanonicalPath())) {
+                return error(server, HttpStatus.NOT_FOUND);
+            }
+            script = new File(scriptCanonical);
         } catch (IOException e) {
-            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
+            return error(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
+
+        if (!script.exists() || script.isDirectory()) {
+            return error(server, HttpStatus.NOT_FOUND);
+        }
+
+        String interpreter = cfg.getInterpreterForExtension(getExtension(script.getName()));
+        if (interpreter == null || interpreter.isEmpty()) {
+            return error(server, HttpStatus.NOT_FOUND);
+        }
+
+        return executeCgi(request, script, interpreter, server);
     }
 
-    private HttpResponse runScript(HttpRequest request, String scriptPath, ServerBlock server) {
-        File script = new File(CGI_ROOT + scriptPath);
-        if (!script.exists() || script.isDirectory()) {
-            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
-        }
-
-        ProcessBuilder pb = new ProcessBuilder("python3", script.getAbsolutePath());
+    private HttpResponse executeCgi(HttpRequest request, File script, String interpreter, ServerBlock server) {
+        ProcessBuilder pb = new ProcessBuilder(interpreter, script.getAbsolutePath());
         pb.directory(script.getParentFile()).redirectErrorStream(true);
-
-        pb.environment().put("REQUEST_METHOD", request.getMethod() == null ? "GET" : request.getMethod());
-        pb.environment().put("QUERY_STRING", extractQuery(request.getPath()));
-        pb.environment().put("CONTENT_LENGTH", 
-            getHeader(request, "Content-Length", request.getBody() != null ? String.valueOf(request.getBody().length) : ""));
         
-        String ct = getHeader(request, "Content-Type", "");
-        if (!ct.isEmpty()) pb.environment().put("CONTENT_TYPE", ct);
+        setupEnvironment(pb, request, script, server);
 
         try {
             Process p = pb.start();
-            HttpResponse response = new HttpResponse();
             
-            try (OutputStream os = p.getOutputStream()) {
-                if (request.getBody() != null && request.getBody().length > 0) {
+            if (request.getBody() != null && request.getBody().length > 0) {
+                try (OutputStream os = p.getOutputStream()) {
                     os.write(request.getBody());
                 }
             }
 
-            byte[] out = readAll(p.getInputStream());
-            if (p.waitFor() != 0) {
-                return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-
-            return parseCGI(response, out);
-
-        } catch (IOException | InterruptedException e) {
-            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
+            byte[] output = readAll(p.getInputStream());
+            return p.waitFor() == 0 ? parseCgiOutput(output) : error(server, HttpStatus.INTERNAL_SERVER_ERROR);
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return error(server, HttpStatus.INTERNAL_SERVER_ERROR);
+        } catch (IOException e) {
+            return error(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    private String extractQuery(String path) {
-        if (path == null) return "";
-        int idx = path.indexOf('?');
-        return idx >= 0 && idx + 1 < path.length() ? path.substring(idx + 1) : "";
+    private void setupEnvironment(ProcessBuilder pb, HttpRequest request, File script, ServerBlock server) {
+        var env = pb.environment();
+        
+        env.put("REQUEST_METHOD", request.getMethod() != null ? request.getMethod() : "GET");
+        env.put("QUERY_STRING", getQueryString(request));
+        env.put("CONTENT_LENGTH", getHeader(request, "Content-Length", 
+            request.getBody() != null ? String.valueOf(request.getBody().length) : ""));
+        
+        String ct = getHeader(request, "Content-Type", "");
+        if (!ct.isEmpty()) env.put("CONTENT_TYPE", ct);
+        
+        env.put("PATH_INFO", script.getAbsolutePath());
+        env.put("SERVER_PROTOCOL", request.getHttpVersion() != null && !request.getHttpVersion().isEmpty()
+            ? request.getHttpVersion() : "HTTP/1.1");
+        
+        if (server != null && server.getListen() != null) {
+            env.put("SERVER_PORT", String.valueOf(server.getListen().getPort()));
+            if (server.getServerNames() != null && !server.getServerNames().isEmpty()) {
+                env.put("SERVER_NAME", server.getServerNames().get(0));
+            }
+        }
     }
 
-    private HttpResponse parseCGI(HttpResponse response, byte[] out) {
-        String raw = new String(out);
+    private String getQueryString(HttpRequest request) {
+        String qs = request.getQueryString();
+        if (qs != null && !qs.isEmpty()) return qs;
+        
+        String path = request.getPath();
+        if (path != null) {
+            int idx = path.indexOf('?');
+            if (idx >= 0) return path.substring(idx + 1);
+        }
+        return "";
+    }
+
+    private HttpResponse parseCgiOutput(byte[] rawBytes) {
+        HttpResponse response = new HttpResponse();
+        String raw = new String(rawBytes);
+
         int sep = raw.indexOf("\r\n\r\n");
-        int len = sep >= 0 ? 4 : (sep = raw.indexOf("\n\n")) >= 0 ? 2 : -1;
+        if (sep < 0) sep = raw.indexOf("\n\n");
+        
+        String headerPart = sep >= 0 ? raw.substring(0, sep) : "";
+        byte[] body = (sep >= 0 ? raw.substring(sep + (raw.charAt(sep) == '\r' ? 4 : 2)) : raw).getBytes();
 
-        String cgiType = null;
-        byte[] body = out;
+        int statusCode = 200;
+        String statusMsg = "OK";
+        boolean hasContentType = false;
 
-        if (sep >= 0) {
-            for (String line : raw.substring(0, sep).split("\\r?\\n")) {
-                int colon = line.indexOf(':');
-                if (colon > 0 && "Content-Type".equalsIgnoreCase(line.substring(0, colon).trim())) {
-                    cgiType = line.substring(colon + 1).trim();
-                    break;
+        for (String line : headerPart.split("\\r?\\n")) {
+            int colon = line.indexOf(':');
+            if (colon <= 0) continue;
+            
+            String name = line.substring(0, colon).trim();
+            String value = line.substring(colon + 1).trim();
+
+            if ("Status".equalsIgnoreCase(name)) {
+                String[] parts = value.split("\\s+", 2);
+                try {
+                    statusCode = Integer.parseInt(parts[0]);
+                    if (parts.length > 1) statusMsg = parts[1];
+                } catch (NumberFormatException e) {
+                    statusCode = 500;
+                    statusMsg = "Internal Server Error";
                 }
+            } else {
+                if ("Content-Type".equalsIgnoreCase(name)) hasContentType = true;
+                response.addHeader(name, value);
             }
-            body = raw.substring(sep + len).getBytes();
         }
 
-        response.setStatusCode(200);
+        response.setStatusCode(statusCode);
+        response.setStatusMessage(statusMsg);
         response.setBody(body);
-        response.addHeader("Content-Type", cgiType != null ? cgiType : "text/html");
+
+        if (!hasContentType) {
+            response.addHeader("Content-Type", "text/html; charset=UTF-8");
+        }
+        if (!response.getHeaders().containsKey("Content-Length")) {
+            response.addHeader("Content-Length", String.valueOf(body.length));
+        }
+
         return response;
+    }
+
+    private String getExtension(String filename) {
+        int dot = filename.lastIndexOf('.');
+        return dot >= 0 ? filename.substring(dot).toLowerCase(Locale.ROOT) : "";
     }
 
     private byte[] readAll(InputStream is) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[4096];
         int n;
-        while ((n = is.read(buf)) != -1) out.write(buf, 0, n);
+        while ((n = is.read(buf)) != -1) {
+            out.write(buf, 0, n);
+        }
         return out.toByteArray();
     }
 
     private String getHeader(HttpRequest request, String name, String def) {
-        try {
-            if (request.getHeaders() == null) return def;
-            String v = request.getHeaders().get(name);
-            if (v == null) v = request.getHeaders().get(name.toLowerCase());
-            return v != null ? v : def;
-        } catch (Exception e) {
-            return def;
-        }
+        if (request.getHeaders() == null) return def;
+        String v = request.getHeaders().get(name);
+        if (v == null) v = request.getHeaders().get(name.toLowerCase());
+        return v != null ? v : def;
+    }
+
+    private HttpResponse error(ServerBlock server, HttpStatus status) {
+        return errorHandler.handle(server, status);
     }
 }
