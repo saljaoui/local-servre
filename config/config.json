@@ -1,9 +1,5 @@
 {
-  "timeouts": {
-    "headerMillis": 5000,
-    "bodyMillis": 15000,
-    "keepAliveMillis": 15000
-  },
+  "timeouts": 1500,
   "servers": [
     {
       "name": "main",

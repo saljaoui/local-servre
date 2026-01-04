@@ -47,7 +47,7 @@ public class Router {
 
         // Handle CGI requests
         if (route.isCgiEnabled()) {
-            return cgiHandler.handle(request, route, server);
+            return cgiHandler.handle(request, server, route);
         }
 
         // Handle file uploads
