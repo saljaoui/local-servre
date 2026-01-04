@@ -8,86 +8,121 @@ import util.SonicLogger;
 public class ParseRequest {
     private static final SonicLogger logger = SonicLogger.getLogger(ParseRequest.class);
 
-    // Requirement: Parse HTTP messages manually
-    private static final String HEADER_SEPARATOR = "\r\n\r\n";
-
-    /**
-     * Parse complete HTTP request from string.
-     * Handles: Request Line, Headers (Host, Cookie, Content-Length), Body.
-     */
     public static HttpRequest processRequest(byte[] raw) throws Exception {
-       HttpRequest req = new HttpRequest();
+        HttpRequest req = new HttpRequest();
         byte[] sep = "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
 
         int headerEnd = indexOf(raw, sep, 0);
-        if (headerEnd == -1) throw new Exception("Bad HTTP");
+        if (headerEnd == -1) throw new Exception("Bad HTTP: Missing header separator");
 
         String headers = new String(raw, 0, headerEnd, StandardCharsets.ISO_8859_1);
         String[] lines = headers.split("\r\n");
 
+        if (lines.length == 0) throw new Exception("Bad HTTP: Empty request");
+
         parseRequestLine(lines[0], req);
-        for (int i = 1; i < lines.length; i++) parseHeaderLine(lines[i], req);
+        for (int i = 1; i < lines.length; i++) {
+            parseHeaderLine(lines[i], req);
+        }
 
+        // Validate Host header for HTTP/1.1
+        if (req.getHttpVersion().equals("HTTP/1.1") && req.getHeader("Host") == null) {
+            throw new Exception("Host header required for HTTP/1.1");
+        }
+
+        // Parse body
         int bodyStart = headerEnd + 4;
-        req.setBody(bodyStart < raw.length
+        byte[] bodyBytes = bodyStart < raw.length
                 ? Arrays.copyOfRange(raw, bodyStart, raw.length)
-                : new byte[0]);
+                : new byte[0];
 
+        // Validate Content-Length if present
+        String contentLength = req.getHeader("Content-Length");
+        if (contentLength != null) {
+            int expectedLength = Integer.parseInt(contentLength);
+            if (bodyBytes.length < expectedLength) {
+                throw new Exception("Incomplete body: expected " + expectedLength + 
+                                  ", got " + bodyBytes.length);
+            }
+            // Trim body to exact Content-Length
+            bodyBytes = Arrays.copyOf(bodyBytes, expectedLength);
+        }
+
+        req.setBody(bodyBytes);
         return req;
     }
 
-    /**
-     * Parse: GET /path HTTP/1.1
-     */
-    private static void parseRequestLine(String line, HttpRequest request) {
-       String[] p =line.split(" ");
-       request.setMethod(p[0]);
-       request.setUri(p[1]);
-       request.setPath(p[1]);
-       request.setHttpVersion(p.length > 2 ? p[2] : "HTTP/1.1");
- 
+    private static void parseRequestLine(String line, HttpRequest request) throws Exception {
+        String[] parts = line.split(" ");
+        if (parts.length < 2) {
+            throw new Exception("Invalid request line: " + line);
+        }
+
+        request.setMethod(parts[0].toUpperCase());
+        
+        // Parse URI and query string
+        String uri = parts[1];
+        int queryIndex = uri.indexOf('?');
+        if (queryIndex > 0) {
+            request.setPath(uri.substring(0, queryIndex));
+            request.setUri(uri);
+            parseQueryParams(uri.substring(queryIndex + 1), request);
+        } else {
+            request.setPath(uri);
+            request.setUri(uri);
+        }
+        
+        request.setHttpVersion(parts.length > 2 ? parts[2] : "HTTP/1.1");
     }
 
-    /**
-     * Parse Headers: Host, Content-Length, Cookie, etc.
-     */
+    private static void parseQueryParams(String query, HttpRequest request) {
+        if (query == null || query.isEmpty()) return;
+        
+        String[] params = query.split("&");
+        for (String param : params) {
+            int eq = param.indexOf('=');
+            if (eq > 0) {
+                String key = urlDecode(param.substring(0, eq));
+                String value = urlDecode(param.substring(eq + 1));
+                request.addQueryParam(key, value);
+            } else if (!param.isEmpty()) {
+                request.addQueryParam(urlDecode(param), "");
+            }
+        }
+    }
+
+    private static String urlDecode(String str) {
+        try {
+            return java.net.URLDecoder.decode(str, "UTF-8");
+        } catch (Exception e) {
+            return str;
+        }
+    }
+
     private static void parseHeaderLine(String line, HttpRequest request) {
         int colonIndex = line.indexOf(':');
-
-        if (colonIndex <= 0)
-            return;
+        if (colonIndex <= 0) return;
 
         String name = line.substring(0, colonIndex).trim();
         String value = line.substring(colonIndex + 1).trim();
 
-        // Store generic header
         request.setHeaders(name, value);
-        // logger.debug("Header added: " + name + "=" + value);
 
-        // Handle Cookies (Mandatory Requirement)
         if (name.equalsIgnoreCase("Cookie")) {
             parseCookieHeader(value, request);
         }
     }
 
-    /**
-     * Parse Cookie: sessionId=abc123; userId=42
-     */
     private static void parseCookieHeader(String cookieValue, HttpRequest request) {
-        if (cookieValue == null || cookieValue.isEmpty())
-            return;
+        if (cookieValue == null || cookieValue.isEmpty()) return;
 
         String[] cookies = cookieValue.split(";");
-
         for (String cookie : cookies) {
             int equalIndex = cookie.indexOf('=');
-
             if (equalIndex > 0) {
                 String name = cookie.substring(0, equalIndex).trim();
                 String value = cookie.substring(equalIndex + 1).trim();
-
                 request.addCookie(name, value);
-                // logger.debug("Cookie parsed: " + name + "=" + value);
             }
         }
     }
@@ -103,5 +138,4 @@ public class ParseRequest {
         }
         return -1;
     }
-
 }
