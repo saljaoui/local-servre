@@ -47,7 +47,7 @@ public class WebConfigLoader {
         Map<String, String> sections = JsonParser.splitTopLevel(json);
 
         if (sections.containsKey("timeouts")) {
-            config.setTimeouts(parseTimeouts(sections.get("timeouts")));
+            config.setTimeouts(Long.parseLong(sections.get("timeouts")));
         }
 
         if (sections.containsKey("servers")) {

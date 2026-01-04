@@ -19,21 +19,42 @@ public class ParseRequest {
         byte[] sep = "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
         
         int headerEnd = indexOf(raw, sep, 0);
-        if (headerEnd == -1)
-            throw new Exception("Bad HTTP");
+        if (headerEnd == -1) throw new Exception("Bad HTTP: Missing header separator");
 
         String headers = new String(raw, 0, headerEnd, StandardCharsets.ISO_8859_1);
         String[] lines = headers.split("\r\n");
 
+        if (lines.length == 0) throw new Exception("Bad HTTP: Empty request");
+
         parseRequestLine(lines[0], req);
-        for (int i = 1; i < lines.length; i++)
+        for (int i = 1; i < lines.length; i++) {
             parseHeaderLine(lines[i], req);
+        }
 
+        // Validate Host header for HTTP/1.1
+        if (req.getHttpVersion().equals("HTTP/1.1") && req.getHeader("Host") == null) {
+            throw new Exception("Host header required for HTTP/1.1");
+        }
+
+        // Parse body
         int bodyStart = headerEnd + 4;
-        req.setBody(bodyStart < raw.length
+        byte[] bodyBytes = bodyStart < raw.length
                 ? Arrays.copyOfRange(raw, bodyStart, raw.length)
-                : new byte[0]);
+                : new byte[0];
 
+        // Validate Content-Length if present
+        String contentLength = req.getHeader("Content-Length");
+        if (contentLength != null) {
+            int expectedLength = Integer.parseInt(contentLength);
+            if (bodyBytes.length < expectedLength) {
+                throw new Exception("Incomplete body: expected " + expectedLength + 
+                                  ", got " + bodyBytes.length);
+            }
+            // Trim body to exact Content-Length
+            bodyBytes = Arrays.copyOf(bodyBytes, expectedLength);
+        }
+
+        req.setBody(bodyBytes);
         return req;
     }
 
@@ -49,46 +70,30 @@ public class ParseRequest {
 
     }
 
-    /**
-     * Parse Headers: Host, Content-Length, Cookie, etc.
-     */
     private static void parseHeaderLine(String line, HttpRequest request) {
         int colonIndex = line.indexOf(':');
-
-        if (colonIndex <= 0)
-            return;
+        if (colonIndex <= 0) return;
 
         String name = line.substring(0, colonIndex).trim();
         String value = line.substring(colonIndex + 1).trim();
 
-        // Store generic header
         request.setHeaders(name, value);
-        // logger.debug("Header added: " + name + "=" + value);
 
-        // Handle Cookies (Mandatory Requirement)
         if (name.equalsIgnoreCase("Cookie")) {
             parseCookieHeader(value, request);
         }
     }
 
-    /**
-     * Parse Cookie: sessionId=abc123; userId=42
-     */
     private static void parseCookieHeader(String cookieValue, HttpRequest request) {
-        if (cookieValue == null || cookieValue.isEmpty())
-            return;
+        if (cookieValue == null || cookieValue.isEmpty()) return;
 
         String[] cookies = cookieValue.split(";");
-
         for (String cookie : cookies) {
             int equalIndex = cookie.indexOf('=');
-
             if (equalIndex > 0) {
                 String name = cookie.substring(0, equalIndex).trim();
                 String value = cookie.substring(equalIndex + 1).trim();
-
                 request.addCookie(name, value);
-                // logger.debug("Cookie parsed: " + name + "=" + value);
             }
         }
     }
@@ -104,5 +109,4 @@ public class ParseRequest {
         }
         return -1;
     }
-
 }
