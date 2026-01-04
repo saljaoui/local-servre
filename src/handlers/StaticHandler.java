@@ -164,11 +164,11 @@ public class StaticHandler {
         html.append("<title>Index of ").append(requestPath).append("</title>");
         html.append("<style>");
         html.append("body{font-family:Arial;margin:40px;background:#f5f5f5}");
-        html.append("h1{color:#333;border-bottom:2px solid #06c;padding-bottom:10px}");
+        html.append("h1{color:#333;border-bottom:2px solid #da70d6;padding-bottom:10px}");
         html.append("ul{list-style:none;padding:0;background:#fff;border-radius:5px}");
         html.append("li{padding:12px;border-bottom:1px solid #eee}");
         html.append("li:hover{background:#f9f9f9}");
-        html.append("a{color:#06c;text-decoration:none}");
+        html.append("a{color:#8a2be2;text-decoration:none}");
         html.append("a:hover{text-decoration:underline}");
         html.append("</style></head><body>");
         html.append("<h1>📁 Index of ").append(requestPath).append("</h1><ul>");

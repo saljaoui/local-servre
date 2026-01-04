@@ -10,8 +10,6 @@ import java.io.IOException;
 import java.nio.file.Files; // Import the fixed parser
 import java.nio.file.StandardCopyOption;
 import routing.model.Route;
-import util.MimeTypes;
-import util.MultipartParser;
 
 public class UploadHandler {
     private final ErrorHandler errorHandler = new ErrorHandler();

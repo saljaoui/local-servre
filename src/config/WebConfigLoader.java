@@ -57,25 +57,6 @@ public class WebConfigLoader {
         return config;
     }
 
-    private static WebServerConfig.Timeouts parseTimeouts(String json) {
-        WebServerConfig.Timeouts timeouts = new WebServerConfig.Timeouts();
-        json = json.substring(1, json.length() - 1).trim();
-
-        Map<String, String> fields = JsonParser.splitTopLevel(json);
-
-        if (fields.containsKey("headerMillis")) {
-            timeouts.setHeaderMillis(ValueParsers.parseInt(fields.get("headerMillis")));
-        }
-        if (fields.containsKey("bodyMillis")) {
-            timeouts.setBodyMillis(ValueParsers.parseInt(fields.get("bodyMillis")));
-        }
-        if (fields.containsKey("keepAliveMillis")) {
-            timeouts.setKeepAliveMillis(ValueParsers.parseInt(fields.get("keepAliveMillis")));
-        }
-
-        return timeouts;
-    }
-
     private static List<WebServerConfig.ServerBlock> parseServers(String json) {
         List<WebServerConfig.ServerBlock> servers = new ArrayList<>();
         json = json.substring(1, json.length() - 1).trim();
