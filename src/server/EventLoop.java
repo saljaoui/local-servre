@@ -29,11 +29,13 @@ public class EventLoop {
                     if (key.isAcceptable()) {
                         handleAccept(key, selector);
                     }
-                    if (!key.isValid()) continue;
+                    if (!key.isValid())
+                        continue;
                     if (key.isReadable()) {
                         handleRead(key);
                     }
-                    if (!key.isValid()) continue;
+                    if (!key.isValid())
+                        continue;
                     if (key.isWritable()) {
                         handleWrite(key);
                     }
@@ -72,15 +74,49 @@ public class EventLoop {
         ServerBlock server = handler.getServer();
 
         // Read data from client
-        boolean readComplete = handler.read(server);
+        // if (server.getClientMaxBodyBytes()) {
 
-        if (readComplete) {
-            // Process the request
-            handler.dispatchRequest();
+        // }
+        try {
+            // Read data from the channel
+            boolean requestComplete = handler.read(server);
 
-            // Switch to WRITE mode - we're ready to send response
-            key.interestOps(SelectionKey.OP_WRITE);
+            if (requestComplete) {
+                // Process the request
+                handler.dispatchRequest();
+
+                // Change interest to write so selector will notify when writable
+                key.interestOps(SelectionKey.OP_WRITE);
+            }
+        } catch (IOException e) {
+            // Client disconnected or error reading
+            logger.debug("Client disconnected: " + e.getMessage());
+            closeConnection(key);
+        } catch (Exception e) {
+            logger.error("Unexpected error: " + e.getMessage(), e);
+            closeConnection(key);
         }
+    }
+
+    private static void closeConnection(SelectionKey key) {
+        ConnectionHandler handler = (ConnectionHandler) key.attachment();
+        if (handler != null) {
+            // Clean up any temporary files
+            handler.cleanupTempFile();
+
+            try {
+                handler.close();
+            } catch (IOException e) {
+                logger.error("Error closing connection", e);
+            }
+        }
+
+        try {
+            key.channel().close();
+        } catch (IOException e) {
+            logger.error("Error closing channel", e);
+        }
+        key.cancel();
     }
 
     private static void handleWrite(SelectionKey key) {

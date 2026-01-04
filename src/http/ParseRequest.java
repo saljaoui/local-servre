@@ -9,24 +9,25 @@ public class ParseRequest {
     private static final SonicLogger logger = SonicLogger.getLogger(ParseRequest.class);
 
     // Requirement: Parse HTTP messages manually
-    private static final String HEADER_SEPARATOR = "\r\n\r\n";
 
     /**
      * Parse complete HTTP request from string.
      * Handles: Request Line, Headers (Host, Cookie, Content-Length), Body.
      */
     public static HttpRequest processRequest(byte[] raw) throws Exception {
-       HttpRequest req = new HttpRequest();
+        HttpRequest req = new HttpRequest();
         byte[] sep = "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
-
+        
         int headerEnd = indexOf(raw, sep, 0);
-        if (headerEnd == -1) throw new Exception("Bad HTTP");
+        if (headerEnd == -1)
+            throw new Exception("Bad HTTP");
 
         String headers = new String(raw, 0, headerEnd, StandardCharsets.ISO_8859_1);
         String[] lines = headers.split("\r\n");
 
         parseRequestLine(lines[0], req);
-        for (int i = 1; i < lines.length; i++) parseHeaderLine(lines[i], req);
+        for (int i = 1; i < lines.length; i++)
+            parseHeaderLine(lines[i], req);
 
         int bodyStart = headerEnd + 4;
         req.setBody(bodyStart < raw.length
@@ -40,12 +41,12 @@ public class ParseRequest {
      * Parse: GET /path HTTP/1.1
      */
     private static void parseRequestLine(String line, HttpRequest request) {
-       String[] p =line.split(" ");
-       request.setMethod(p[0]);
-       request.setUri(p[1]);
-       request.setPath(p[1]);
-       request.setHttpVersion(p.length > 2 ? p[2] : "HTTP/1.1");
- 
+        String[] p = line.split(" ");
+        request.setMethod(p[0]);
+        request.setUri(p[1]);
+        request.setPath(p[1]);
+        request.setHttpVersion(p.length > 2 ? p[2] : "HTTP/1.1");
+
     }
 
     /**

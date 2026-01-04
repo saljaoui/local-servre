@@ -7,12 +7,16 @@ import http.model.HttpRequest;
 import http.model.HttpResponse;
 import http.model.HttpStatus;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+
 import routing.Router;
 import util.SonicLogger;
 
@@ -24,15 +28,28 @@ public class ConnectionHandler {
     private final SocketChannel channel;
     private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
     private ByteBuffer writeBuffer;
-    private final ByteArrayOutputStream rawBytes = new ByteArrayOutputStream();
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
     private final Router router;
     private final ServerBlock server;
 
+    //
+    private ByteArrayOutputStream rawBytes;
+    private boolean isFileUpload = false;
+    private File tempFile;
+    private FileOutputStream tempFileOutputStream;
+    private long bytesWrittenToFile = 0;
+    private String boundary;
+    private String uploadFileName;
+    private boolean headersParsed = false;
+    private byte[] remainingHeaderData;
+    private boolean requestComplete = false;
     private boolean headersReceived = false;
     private long expectedContentLength = 0;
     private long totalBytesRead = 0;
+
+    private boolean skippedMultipartHeaders = false;
+    private byte[] boundaryBytes;
 
     public ConnectionHandler(SocketChannel channel, ServerBlock server) {
         this.channel = channel;
@@ -47,7 +64,7 @@ public class ConnectionHandler {
 
     public boolean read(ServerBlock server) throws IOException {
         int bytesRead = channel.read(readBuffer);
-        System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
+        // System.out.println("[DEBUG] Read " + bytesRead + " bytes from client.");
 
         if (bytesRead == -1) {
             this.close();
@@ -58,50 +75,208 @@ public class ConnectionHandler {
 
         // Check max body size
         if (totalBytesRead > server.getClientMaxBodyBytes()) {
+            // System.err.println("here ");
             try {
+                cleanupTempFile();
                 httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
                 ByteBuffer buffer = ByteBuffer.wrap(httpResponse.toString().getBytes());
                 while (buffer.hasRemaining()) {
                     channel.write(buffer);
                 }
             } catch (IOException e) {
-                logger.error("Failed to send 413 response to client", e);
+                httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
+                // logger.error("Failed to send 413 response to client", e);
             }
             this.close();
             return false;
         }
-
         // Copy data from buffer to rawBytes
         readBuffer.flip();
         byte[] data = new byte[readBuffer.remaining()];
         readBuffer.get(data);
-        rawBytes.write(data);
         readBuffer.clear();
-
+        if (rawBytes == null) {
+            rawBytes = new ByteArrayOutputStream();
+        }
+        rawBytes.write(data);
         // Parse headers to get Content-Length
-        if (!headersReceived) {
+        if (!headersParsed) {
             String temp = new String(rawBytes.toByteArray());
             int idx = temp.indexOf("\r\n\r\n");
+            if (rawBytes == null) {
+                rawBytes = new ByteArrayOutputStream();
+            }
+
             if (idx != -1) {
-                headersReceived = true;
+                headersParsed = true;
+
                 for (String line : temp.substring(0, idx).split("\r\n")) {
                     if (line.toLowerCase().startsWith("content-length:")) {
                         expectedContentLength = Long.parseLong(line.split(":")[1].trim());
                     }
                 }
+
+                if (isMulltipartForm()) {
+                    isFileUpload = true;
+                    boundary = extractBoundry(temp);
+                    
+                    prepareFileUpload();
+
+                    byte[] bodyData = Arrays.copyOfRange(rawBytes.toByteArray(), idx + 4, rawBytes.size());
+                    if (bodyData.length > 0) {
+                        processFileData(bodyData);
+                    }
+                }
+            }
+        } else if (isFileUpload) {
+            processFileData(data);
+        }
+
+        if (headersParsed) {
+            if (isFileUpload) {
+                requestComplete = expectedContentLength == 0 || bytesWrittenToFile >= expectedContentLength;
+            } else {
+                // For regular requests, check if we have the complete body
+                requestComplete = expectedContentLength == 0 || rawBytes.size() >= expectedContentLength;
             }
         }
 
-        // Check if we have complete request
-        int headerEnd = indexOf(rawBytes.toByteArray(), "\r\n\r\n".getBytes(), 0);
-        int bodySize = rawBytes.size() - (headerEnd + 4);
+        return requestComplete;
+    }
 
-        return expectedContentLength == 0 || bodySize >= expectedContentLength;
+    public File getUploadedFile() {
+        if (!isFileUpload || tempFile == null) {
+            return null;
+        }
+
+        // Close the output stream if it's still open
+        try {
+            if (tempFileOutputStream != null) {
+                tempFileOutputStream.close();
+                tempFileOutputStream = null;
+            }
+        } catch (IOException e) {
+            System.err.println("Error closing temp file output stream: " + e.getMessage());
+        }
+
+        return tempFile;
+    }
+
+    // Add a method to get the uploaded filename
+    public String getUploadFileName() {
+        if (uploadFileName == null && isFileUpload) {
+            // Extract filename from the raw request data
+            String temp = new String(rawBytes.toByteArray());
+            uploadFileName = extractFilename(temp, boundary);
+        }
+        return uploadFileName;
+    }
+
+    private String extractFilename(String headerString, String boundary) {
+        // Find the first part of the multipart data
+        int firstBoundary = headerString.indexOf("--" + boundary);
+        if (firstBoundary == -1)
+            return null;
+
+        int secondBoundary = headerString.indexOf("--" + boundary, firstBoundary + 2);
+        if (secondBoundary == -1)
+            return null;
+
+        String firstPart = headerString.substring(firstBoundary, secondBoundary);
+
+        // Find Content-Disposition header
+        int dispositionIndex = firstPart.indexOf("Content-Disposition:");
+        if (dispositionIndex == -1)
+            return null;
+
+        // Find filename parameter
+        int filenameIndex = firstPart.indexOf("filename=\"", dispositionIndex);
+        if (filenameIndex == -1)
+            return null;
+
+        int filenameStart = filenameIndex + 10;
+        int filenameEnd = firstPart.indexOf("\"", filenameStart);
+        if (filenameEnd == -1)
+            return null;
+
+        String filename = firstPart.substring(filenameStart, filenameEnd);
+
+        // Extract just the filename without path
+        int lastSlash = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
+        if (lastSlash != -1) {
+            filename = filename.substring(lastSlash + 1);
+        }
+
+        return filename.isEmpty() ? null : filename;
+    }
+
+    public void cleanupTempFile() {
+        try {
+            if (tempFileOutputStream != null) {
+                tempFileOutputStream.close();
+                tempFileOutputStream = null;
+            }
+
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+                System.out.println("Deleted temp file: " + tempFile.getPath());
+            }
+        } catch (IOException e) {
+            System.err.println("Error cleaning up temp file: " + e.getMessage());
+        }
+    }
+
+    private void processFileData(byte[] bodyData) throws IOException {
+        if (tempFileOutputStream != null) {
+            tempFileOutputStream.write(bodyData);
+            bytesWrittenToFile += bodyData.length;
+            // Log progress for large uploads
+            if (bytesWrittenToFile % (1024 * 1024) == 0) { // Every 1MB
+                System.out.println("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB of " +
+                        (expectedContentLength / 1024 / 1024) + "MB");
+            }
+        }
+    }
+
+    private void prepareFileUpload() throws IOException {
+
+        tempFile = File.createTempFile("uploads", ".tmp");
+        tempFileOutputStream = new FileOutputStream(tempFile);
+
+        System.out.println("Created temp file: " + tempFile.getPath());
+    }
+
+    private String extractBoundry(String headeString) {
+        // Auto-generated method stub
+        String[] lines = headeString.split("\r\n");
+        for (String line : lines) {
+            if (line.toLowerCase().startsWith("content-type: multipart/form-data")) {
+                int boundaryIndex = line.indexOf("boundary=");
+                if (boundaryIndex != -1) {
+                    return line.substring(boundaryIndex + 9);
+                }
+            }
+        }
+        return null;
+    }
+
+    // Add this method to ConnectionHandler class
+    public boolean isFileUpload() {
+        return isFileUpload;
+    }
+
+    private boolean isMulltipartForm() {
+        if (rawBytes == null) {
+            return false;
+        }
+        String tmp = new String(rawBytes.toByteArray());
+        return tmp.toLowerCase().contains("content-type: multipart/form-data");
     }
 
     public void dispatchRequest() {
         try {
             httpRequest = ParseRequest.processRequest(rawBytes.toByteArray());
+            httpRequest.setConnectionHandler(this);
             httpResponse = router.routeRequest(httpRequest, server);
         } catch (Exception ex) {
             logger.error("Error processing request", ex);
@@ -157,25 +332,24 @@ public class ConnectionHandler {
     }
 
     private void resetForNextRequest() {
-        rawBytes.reset();
+
         headersReceived = false;
         expectedContentLength = 0;
         totalBytesRead = 0;
+        headersParsed = false;
+        isFileUpload = false;
+        bytesWrittenToFile = 0;
+        requestComplete = false;
+        boundary = null;
+        uploadFileName = null;
+
+        if (rawBytes != null) {
+            rawBytes.reset();
+        }
+
         httpRequest = null;
         httpResponse = null;
         writeBuffer = null;
-    }
-
-    private static int indexOf(byte[] src, byte[] target, int from) {
-        outer: for (int i = from; i <= src.length - target.length; i++) {
-            for (int j = 0; j < target.length; j++) {
-                if (src[i + j] != target[j]) {
-                    continue outer;
-                }
-            }
-            return i;
-        }
-        return -1;
     }
 
     private HttpStatus resolveStatus(int code) {

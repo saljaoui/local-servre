@@ -14,7 +14,7 @@
       },
       "serverNames": ["localhost", "main.com"],
       "root": "./www/main",
-      "clientMaxBodyBytes": 1048576,
+      "clientMaxBodyBytes": 1048570006,
       "errorPages": {
         "400": "./error_pages/400.html",
         "403": "./error_pages/403.html",

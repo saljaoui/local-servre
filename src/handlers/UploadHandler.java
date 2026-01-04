@@ -18,9 +18,6 @@ public class UploadHandler {
 
     public HttpResponse handle(HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
-
-        System.out.println("=".repeat(60)); // Separator in console
-
         // 1. Check if upload is enabled
         Upload upload = route.getUpload();
         if (upload == null || !upload.isEnabled()) {
@@ -44,76 +41,46 @@ public class UploadHandler {
         }
 
         // 4. Get Body
-        byte[] rawBody = request.getBody();
-
-        if (rawBody == null || rawBody.length == 0) {
+        // byte[] rawBody = request.getBody()
+        File uploaFile = request.getUploadedFile();
+        // System.out.println("UploadHandler.handle() "+rawBody.toString());
+        if (uploaFile == null || !uploaFile.exists()) {
             return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
 
-        // 5. Call Parser (Extract Clean Content)
-        System.out.println("[CH] [UPLOAD] Calling MultipartParser...");
-        byte[] cleanContent = MultipartParser.extractFileContent(request);
-        if (cleanContent == null) {
-            System.err.println("[CRITICAL] [UPLOAD] MultipartParser returned NULL! Writing 0 bytes.");
-            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        long fileSize = uploaFile.length();
 
-        System.out.println("[CH] [UPLOAD] Parser returned clean content. Size: " + cleanContent.length);
+        // 5. Call Parser (Extract Clean Content)
+
+        System.out.println("[CH] [UPLOAD] Calling MultipartParser...");
 
         // 6. Check Size (Server Limit)
         long maxBodySize = server.getClientMaxBodyBytes();
-        if (cleanContent.length > maxBodySize) {
+        if (fileSize > maxBodySize) {
             return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
-        String fileField = upload.getFileField();
-        if (fileField == null || fileField.isEmpty()) {
-            fileField = "file";
-        }
-
-        String originalName = MultipartParser.extractFilename(request);
-
-        String extension = "";
-        if (originalName != null && originalName.contains(".")) {
-            extension = originalName.substring(originalName.lastIndexOf("."));
-        }
-
         String filename = System.currentTimeMillis() + "_" +
-                java.util.UUID.randomUUID().toString().substring(0, 8) + extension;
-
-        File uploadedFile = new File(uploadDirectory, filename);
+                java.util.UUID.randomUUID().toString().substring(0, 8);
+        // 7. Create destination file
+        File destinationFile = new File(uploadDirectory, filename);
 
         try {
-            // 8. Write File
-            Files.copy(
-                    new java.io.ByteArrayInputStream(cleanContent),
-                    uploadedFile.toPath(),
+            // 8. Move temp file to destination
+            Files.move(
+                    uploaFile.toPath(),
+                    destinationFile.toPath(),
                     StandardCopyOption.REPLACE_EXISTING);
 
-            // DEBUGGING: Verify what is on disk immediately
-            long diskSize = uploadedFile.length();
-            System.out.println("[CH] [UPLOAD] File Saved to: " + uploadedFile.getAbsolutePath());
-            System.out.println("[CH] [UPLOAD] Size on Disk: " + diskSize + " bytes");
-            System.out.println("[CH] [UPLOAD] Input RAM Size: " + cleanContent.length + " bytes");
-
-            // CHECK: Did we save 4 bytes?
-            if (diskSize <= 10) {
-                System.err.println("[CRITICAL] [UPLOAD] File looks CORRUPT! Only " + diskSize + " bytes saved.");
-            }
+            System.out.println("[UPLOAD] File moved from: " + uploaFile.getAbsolutePath());
+            System.out.println("[UPLOAD] File moved to: " + destinationFile.getAbsolutePath());
+            System.out.println("[UPLOAD] File size: " + destinationFile.length() + " bytes");
 
             // 9. Build Response
             response.setStatusCode(HttpStatus.OK.code);
             response.setStatusMessage(HttpStatus.OK.message);
-            String msg = "File saved: " + filename;
+            String msg = "File uploaded successfully: " + filename;
             response.setBody(msg.getBytes());
-
-            // 10. SET CORRECT CONTENT-TYPE
-            // Detect type from the clean binary data
-            String mimeType = MimeTypes.getMimeType(uploadedFile.getName());
-            System.out.println("[CH] [UPLOAD] Detected MIME Type: " + mimeType);
-            response.addHeader("Content-Type", mimeType);
-
-            System.out.println("=".repeat(60));
 
         } catch (IOException e) {
             e.printStackTrace();

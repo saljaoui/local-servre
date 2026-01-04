@@ -38,22 +38,6 @@ public class MultipartParser {
         }
         return -1;
     }
-
-    public static String extractFilename(HttpRequest request) {
-
-        byte[] body = request.getBody();
-        String headers = new String(body, 0, Math.min(body.length, 2048));
-
-        int idx = headers.indexOf("filename=\"");
-        if (idx == -1)
-            return null;
-
-        int start = idx + 10;
-        int end = headers.indexOf("\"", start);
-        if (end == -1)
-            return null;
-
-        return headers.substring(start, end);
-    }
+ 
 
 }
