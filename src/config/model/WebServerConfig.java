@@ -241,71 +241,111 @@ public class WebServerConfig {
         return null;
     }
 
-    public void validate() throws IllegalArgumentException {
-        if (timeouts == null) {
-            throw new IllegalArgumentException("Timeouts configuration is required");
+public void validate() throws IllegalArgumentException {
+    // 1. Timeouts
+    if (timeouts == null) {
+        throw new IllegalArgumentException("Timeouts configuration is required");
+    }
+
+    // 2. At least one server
+    if (servers == null || servers.isEmpty()) {
+        throw new IllegalArgumentException("At least one server block is required");
+    }
+
+    // 3. Cross-server validation
+    Set<String> serverNames = new HashSet<>();
+    Map<Integer, Set<String>> portToServerNames = new HashMap<>();
+    Map<Integer, Boolean> portHasDefault = new HashMap<>();
+
+    for (ServerBlock server : servers) {
+        // 3a. Server name validation
+        if (server.getName() == null || server.getName().isEmpty()) {
+            throw new IllegalArgumentException("Server name is required");
+        }
+        if (!serverNames.add(server.getName())) {
+            throw new IllegalArgumentException("Duplicate server name: " + server.getName());
         }
 
-        if (servers == null || servers.isEmpty()) {
-            throw new IllegalArgumentException("At least one server block is required");
+        if (server.getListen() == null) {
+            throw new IllegalArgumentException("Server '" + server.getName()
+                    + "' must have a listen address");
         }
 
-        // Cross-server validation (unique host:port + one default per port)
-        Set<String> listenKeys = new HashSet<>();
-        Set<Integer> defaultPorts = new HashSet<>();
+        ListenAddress addr = server.getListen();
+        int port = addr.getPort();
+        
+        if (port < 1 || port > 65535) {
+            throw new IllegalArgumentException("Invalid port: " + port
+                    + " in server '" + server.getName() + "'");
+        }
 
-        for (ServerBlock server : servers) {
-            if (server.getName() == null || server.getName().isEmpty()) {
-                throw new IllegalArgumentException("Server name is required");
+        if (addr.isDefault()) {
+            if (portHasDefault.getOrDefault(port, false)) {
+                throw new IllegalArgumentException(
+                    "More than one default server on port " + port);
+            }
+            portHasDefault.put(port, true);
+        }
+
+        // 3d. ServerNames uniqueness per port (virtual hosting)
+        if (server.getServerNames() == null || server.getServerNames().isEmpty()) {
+            throw new IllegalArgumentException("Server '" + server.getName()
+                    + "' must have at least one server name");
+        }
+
+        portToServerNames.putIfAbsent(port, new HashSet<>());
+        for (String sName : server.getServerNames()) {
+            if (!portToServerNames.get(port).add(sName)) {
+                throw new IllegalArgumentException(
+                    "Duplicate serverName '" + sName + "' on port " + port);
+            }
+        }
+
+        if (server.getClientMaxBodyBytes() <= 0) {
+            throw new IllegalArgumentException("Server '" + server.getName()
+                    + "' must have positive clientMaxBodyBytes");
+        }
+
+        if (server.getRoutes() == null || server.getRoutes().isEmpty()) {
+            throw new IllegalArgumentException("Server '" + server.getName()
+                    + "' must have at least one route");
+        }
+
+        List<String> validMethods = Arrays.asList("GET", "POST", "DELETE", "OPTIONS");
+        for (Route route : server.getRoutes()) {
+            if (route.getPath() == null || route.getPath().isEmpty()) {
+                throw new IllegalArgumentException("Route path is required in server '"
+                        + server.getName() + "'");
             }
 
-            if (server.getListen() == null) {
-                throw new IllegalArgumentException("Server '" + server.getName()
-                        + "' must have a listen address");
+            if (route.getMethods() == null || route.getMethods().isEmpty()) {
+                throw new IllegalArgumentException("Route '" + route.getPath()
+                        + "' must have at least one HTTP method");
             }
 
-            // Validate listen entry
-            ListenAddress addr = server.getListen();
-            String host = (addr.getHost() == null || addr.getHost().trim().isEmpty())
-                    ? "0.0.0.0"
-                    : addr.getHost().trim();
-
-            int port = addr.getPort();
-            if (port < 1 || port > 65535) {
-                throw new IllegalArgumentException("Invalid port: " + port
-                        + " in server '" + server.getName() + "'");
-            }
-
-            String key = host + ":" + port;
-            if (!listenKeys.add(key)) {
-                throw new IllegalArgumentException("Duplicate listen address detected: " + key);
-            }
-
-            if (addr.isDefault() && !defaultPorts.add(port)) {
-                throw new IllegalArgumentException("More than one default server on port " + port);
-            }
-
-            if (server.getRoutes() == null || server.getRoutes().isEmpty()) {
-                throw new IllegalArgumentException("Server '" + server.getName()
-                        + "' must have at least one route");
-            }
-
-            // Check for required error pages
-            if (server.getErrorPages() == null || server.getErrorPages().isEmpty()) {
-                throw new IllegalArgumentException("Server '" + server.getName()
-                        + "' must have error pages defined");
-            }
-
-            String[] requiredErrors = {"400", "403", "404", "405", "413", "500"};
-            for (String code : requiredErrors) {
-                if (!server.getErrorPages().containsKey(code)) {
-                    throw new IllegalArgumentException("Server '" + server.getName()
-                            + "' missing error page for: " + code);
+            for (String method : route.getMethods()) {
+                if (!validMethods.contains(method.toUpperCase())) {
+                    throw new IllegalArgumentException("Invalid HTTP method '" + method
+                            + "' in route '" + route.getPath() + "'");
                 }
             }
         }
-    }
 
+        // 3g. Error pages validation
+        if (server.getErrorPages() == null || server.getErrorPages().isEmpty()) {
+            throw new IllegalArgumentException("Server '" + server.getName()
+                    + "' must have error pages defined");
+        }
+
+        String[] requiredErrors = {"400", "403", "404", "405", "413", "500"};
+        for (String code : requiredErrors) {
+            if (!server.getErrorPages().containsKey(code)) {
+                throw new IllegalArgumentException("Server '" + server.getName()
+                        + "' missing error page for: " + code);
+            }
+        }
+    }
+}
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
