@@ -35,7 +35,7 @@ public class Server {
 
             logger.success("Server started with " + serverChannels.size() + " listener(s)");
 
-            EventLoop.loop(selector);
+            EventLoop.loop(selector, config);
 
         } catch (IOException e) {
             logger.error("Failed to start server", e);
