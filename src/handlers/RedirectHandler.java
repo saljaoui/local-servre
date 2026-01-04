@@ -1,7 +1,7 @@
 package handlers;
 
-import config.model.WebServerConfig.Redirect;
 import http.model.HttpResponse;
+import routing.model.Redirect;
 import routing.model.Route;
 
 public class RedirectHandler {

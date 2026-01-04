@@ -2,9 +2,8 @@ package routing.model;
 
 import java.util.List;
 
-import config.model.WebServerConfig.Cgi;
-import config.model.WebServerConfig.Redirect;
 import config.model.WebServerConfig.Upload;
+import handlers.model.Cgi;
 
 public class Route {
 

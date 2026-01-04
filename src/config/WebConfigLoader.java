@@ -1,6 +1,8 @@
 package config;
 
 import config.model.WebServerConfig;
+import handlers.model.Cgi;
+import routing.model.Redirect;
 import routing.model.Route;
 
 import java.io.*;
@@ -202,8 +204,8 @@ public class WebConfigLoader {
         return upload;
     }
 
-    private static WebServerConfig.Cgi parseCgi(String json) {
-        WebServerConfig.Cgi cgi = new WebServerConfig.Cgi();
+    private static Cgi parseCgi(String json) {
+        Cgi cgi = new Cgi();
         json = json.substring(1, json.length() - 1).trim();
 
         Map<String, String> fields = JsonParser.splitTopLevel(json);
@@ -221,8 +223,8 @@ public class WebConfigLoader {
         return cgi;
     }
 
-    private static WebServerConfig.Redirect parseRedirect(String json) {
-        WebServerConfig.Redirect redirect = new WebServerConfig.Redirect();
+    private static Redirect parseRedirect(String json) {
+        Redirect redirect = new Redirect();
         json = json.substring(1, json.length() - 1).trim();
 
         Map<String, String> fields = JsonParser.splitTopLevel(json);
