@@ -2,6 +2,7 @@ package config;
 
 import config.model.WebServerConfig;
 import handlers.model.Cgi;
+import handlers.model.Upload;
 import routing.model.Redirect;
 import routing.model.Route;
 
@@ -185,8 +186,8 @@ public class WebConfigLoader {
         return route;
     }
 
-    private static WebServerConfig.Upload parseUpload(String json) {
-        WebServerConfig.Upload upload = new WebServerConfig.Upload();
+    private static Upload parseUpload(String json) {
+        Upload upload = new Upload();
         json = json.substring(1, json.length() - 1).trim();
 
         Map<String, String> fields = JsonParser.splitTopLevel(json);

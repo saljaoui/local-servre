@@ -1,7 +1,7 @@
 package handlers;
 
 import config.model.WebServerConfig.ServerBlock;
-import config.model.WebServerConfig.Upload;
+import handlers.model.Upload;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
 import http.model.HttpStatus;

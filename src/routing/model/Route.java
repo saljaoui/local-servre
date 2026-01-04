@@ -2,8 +2,8 @@ package routing.model;
 
 import java.util.List;
 
-import config.model.WebServerConfig.Upload;
 import handlers.model.Cgi;
+import handlers.model.Upload;
 
 public class Route {
 
