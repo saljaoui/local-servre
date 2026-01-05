@@ -1,7 +1,6 @@
 package server;
 
 import config.model.WebServerConfig;
-import config.model.WebServerConfig.ServerBlock;
 import java.io.IOException;
 import java.nio.channels.*;
 import java.util.Iterator;
@@ -36,20 +35,20 @@ public class EventLoop {
                 SelectionKey key = keys.next();
                 keys.remove(); // Must remove after getting it
 
-                try {
-                    // Handle different types of events
-                    if (key.isAcceptable()) {
-                        handleAccept(key, selector);
-                    }
-                    if (!key.isValid())
-                        continue;
-                    if (key.isReadable()) {
-                        handleRead(key);
-                    }
-                    if (!key.isValid())
-                        continue;
-                    if (key.isWritable()) {
-                        handleWrite(key);
+            try {
+                // Handle different types of events
+                if (key.isAcceptable()) {
+                    handleAccept(key, selector);
+                }
+                if (!key.isValid())
+                    continue;
+                if (key.isReadable()) {
+                    handleRead(key);
+                }
+                if (!key.isValid())
+                    continue;
+                if (key.isWritable()) {
+                    handleWrite(key);
                     }
                 } catch (IOException e) {
                     System.err.println("Error: " + e.getMessage());
@@ -57,6 +56,10 @@ public class EventLoop {
                 }
             }
         }
+    }
+
+    static void removeTracking(SocketChannel channel) {
+        connectionActivity.remove(channel);
     }
     
     private static void checkTimeouts(long timeoutMillis) {
@@ -102,7 +105,7 @@ public class EventLoop {
 
     private static void handleAccept(SelectionKey key, Selector selector) throws IOException {
         ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
-        ServerBlock server = (ServerBlock) key.attachment();
+        Server.PortContext portContext = (Server.PortContext) key.attachment();
 
         SocketChannel clientChannel = serverChannel.accept();
 
@@ -115,7 +118,7 @@ public class EventLoop {
 
         // Register for READ events and attach a Handler
         SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
-        ConnectionHandler handler = new ConnectionHandler(clientChannel, server);
+        ConnectionHandler handler = new ConnectionHandler(clientChannel, portContext);
         clientKey.attach(handler); // Attach handler to the key
         
         // Track connection activity
@@ -126,7 +129,6 @@ public class EventLoop {
 
     private static void handleRead(SelectionKey key) throws IOException {
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
-        ServerBlock server = handler.getServer();
         
         // Update activity time
         SocketChannel channel = (SocketChannel) key.channel();
@@ -138,9 +140,11 @@ public class EventLoop {
         // }
         try {
             // Read data from the channel
-            boolean requestComplete = handler.read(server);
+            boolean requestComplete = handler.read();
 
-            if (requestComplete) {
+            if (handler.hasPendingResponse()) {
+                key.interestOps(SelectionKey.OP_WRITE);
+            } else if (requestComplete) {
                 // Process the request
                 handler.dispatchRequest();
 
@@ -171,6 +175,7 @@ public class EventLoop {
         }
 
         try {
+            connectionActivity.remove((SocketChannel) key.channel());
             key.channel().close();
         } catch (IOException e) {
             logger.error("Error closing channel", e);

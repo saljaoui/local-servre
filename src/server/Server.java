@@ -3,8 +3,6 @@ package server;
 import config.model.WebServerConfig;
 import config.model.WebServerConfig.ListenAddress;
 import config.model.WebServerConfig.ServerBlock;
-import util.SonicLogger;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
@@ -13,13 +11,14 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.util.HashMap;
 import java.util.Map;
+import util.SonicLogger;
 
 public class Server {
 
     private static final SonicLogger logger = SonicLogger.getLogger(Server.class);
 
     private final WebServerConfig config;
-    private final Map<Integer, ServerSocketChannel> serverChannels = new HashMap<>();
+    private final Map<Integer, PortContext> portContexts = new HashMap<>();
 
     private Selector selector;
 
@@ -33,7 +32,7 @@ public class Server {
             registerShutdownHook();
             bindAllServers();
 
-            logger.success("Server started with " + serverChannels.size() + " listener(s)");
+            logger.success("Server started with " + portContexts.size() + " listener(s)");
 
             EventLoop.loop(selector, config);
 
@@ -58,6 +57,12 @@ public class Server {
 
     private void bindSingleServer(ListenAddress addr, ServerBlock serverBlock) throws IOException {
 
+        PortContext ctx = portContexts.get(addr.getPort());
+        if (ctx != null) {
+            ctx.addServer(serverBlock);
+            return;
+        }
+
         ServerSocketChannel channel = null;
 
         try {
@@ -66,8 +71,12 @@ public class Server {
             channel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
 
             channel.bind(new InetSocketAddress(addr.getHost(), addr.getPort()));
-            channel.register(selector, SelectionKey.OP_ACCEPT, serverBlock);
-            serverChannels.put(addr.getPort(), channel);
+
+            ctx = new PortContext(channel, addr.getPort());
+            ctx.addServer(serverBlock);
+
+            channel.register(selector, SelectionKey.OP_ACCEPT, ctx);
+            portContexts.put(addr.getPort(), ctx);
 
             String url = "http://" + addr.getHost() + ":" + addr.getPort();
             String coloredUrl = "\u001B[38;5;51m" + url + "\u001B[38;5;51m";
@@ -108,9 +117,9 @@ public class Server {
     }
 
     private void closeAllChannels() {
-        for (Map.Entry<Integer, ServerSocketChannel> entry : serverChannels.entrySet()) {
+        for (Map.Entry<Integer, PortContext> entry : portContexts.entrySet()) {
             try {
-                ServerSocketChannel channel = entry.getValue();
+                ServerSocketChannel channel = entry.getValue().channel;
                 if (channel.isOpen()) {
                     logger.info("Closing port " + entry.getKey());
                     channel.close();
@@ -119,7 +128,7 @@ public class Server {
                 logger.error("Error closing port " + entry.getKey(), e);
             }
         }
-        serverChannels.clear();
+        portContexts.clear();
     }
 
     private void closeSelector() {
@@ -139,6 +148,49 @@ public class Server {
             }
         } catch (IOException e) {
             logger.error("Error closing channel", e);
+        }
+    }
+
+    public static class PortContext {
+        private final ServerSocketChannel channel;
+        private final int port;
+        private final java.util.List<ServerBlock> servers = new java.util.ArrayList<>();
+        private ServerBlock defaultServer;
+
+        public PortContext(ServerSocketChannel channel, int port) {
+            this.channel = channel;
+            this.port = port;
+        }
+
+        public void addServer(ServerBlock serverBlock) {
+            servers.add(serverBlock);
+            if (defaultServer == null || (serverBlock.getListen() != null && serverBlock.getListen().isDefault())) {
+                defaultServer = serverBlock;
+            }
+        }
+
+        public ServerBlock getDefaultServer() {
+            return defaultServer != null ? defaultServer : (servers.isEmpty() ? null : servers.get(0));
+        }
+
+        public ServerBlock selectServer(String hostHeader) {
+            if (servers.isEmpty()) return null;
+            if (hostHeader == null || hostHeader.isEmpty()) {
+                return getDefaultServer();
+            }
+
+            String hostOnly = hostHeader;
+            int colon = hostHeader.indexOf(':');
+            if (colon > 0) {
+                hostOnly = hostHeader.substring(0, colon);
+            }
+
+            for (ServerBlock block : servers) {
+                if (block.getServerNames() != null && block.getServerNames().contains(hostOnly)) {
+                    return block;
+                }
+            }
+            return getDefaultServer();
         }
     }
 }

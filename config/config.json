@@ -58,7 +58,7 @@
       "name": "server-8081",
       "listen": {
         "host": "0.0.0.0",
-        "port": 8081,
+        "port": 8080,
         "default": false
       },
       "serverNames": ["localhost", "upload.com"],
@@ -117,7 +117,7 @@
       "name": "server-8082",
       "listen": {
         "host": "0.0.0.0",
-        "port": 8082,
+        "port": 8080,
         "default": false
       },
       "serverNames": ["localhost", "cgi.com"],

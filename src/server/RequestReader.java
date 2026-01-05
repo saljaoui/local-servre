@@ -79,6 +79,12 @@ public class RequestReader {
         return rawBytes.toByteArray();
     }
 
+    public void replaceRawBytes(byte[] data) {
+        rawBytes.reset();
+        rawBytes.write(data, 0, data.length);
+        parseHeaders();
+    }
+
     public void reset() {
         rawBytes.reset();
         headersParsed = false;

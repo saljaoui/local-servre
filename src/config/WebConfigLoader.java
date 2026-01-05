@@ -22,8 +22,14 @@ public class WebConfigLoader {
         try {
             String content = Files.readString(Path.of(FILE_PATH));
             WebServerConfig config = parseConfig(content);
-            config.validate();
-            return parseConfig(content);
+            var errors = config.validateAndPrune();
+            if (!errors.isEmpty()) {
+                errors.forEach(err -> System.err.println("Config validation: " + err));
+            }
+            if (config.getServers() == null || config.getServers().isEmpty()) {
+                throw new IllegalArgumentException("No valid servers configured");
+            }
+            return config;
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(1);

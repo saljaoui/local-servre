@@ -37,7 +37,7 @@ public class Router {
 
         var method = request.getMethod(); 
        
-        if (!route.isMethodAllowed(method) && !"/uploads".equals(route.getPath())) { 
+        if (!route.isMethodAllowed(method)) { 
             return errorHandler.methodNotAllowed(server);
         }
         // Handle redirects first

@@ -3,7 +3,6 @@ package server;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -24,7 +23,8 @@ public class ConnectionHandler {
     private final ErrorHandler errorHandler;
     private final SocketChannel channel;
     private final Router router;
-    private final ServerBlock server;
+    private final Server.PortContext portContext;
+    private ServerPortSelection serverSelection;
     
     private final RequestReader requestReader;
     private final ResponseWriter responseWriter;
@@ -33,10 +33,12 @@ public class ConnectionHandler {
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
     private boolean isFileUpload = false;
+    private boolean pendingResponse = false;
 
-    public ConnectionHandler(SocketChannel channel, ServerBlock server) {
+    public ConnectionHandler(SocketChannel channel, Server.PortContext portContext) {
         this.channel = channel;
-        this.server = server;
+        this.portContext = portContext;
+        this.serverSelection = new ServerPortSelection(portContext);
         this.router = new Router();
         this.errorHandler = new ErrorHandler();
         this.requestReader = new RequestReader(channel);
@@ -44,12 +46,8 @@ public class ConnectionHandler {
         this.fileUploadHandler = new FileUploadHandler();
     }
 
-    public ServerBlock getServer() {
-        return server;
-    }
-
-    public boolean read(ServerBlock server) throws IOException {
-        RequestReader.ReadResult result = requestReader.read(server);
+    public boolean read() throws IOException {
+        RequestReader.ReadResult result = requestReader.read(serverSelection.activeServer);
 
         if (result.status == RequestReader.ReadResult.Status.CONNECTION_CLOSED) {
             this.close();
@@ -61,12 +59,12 @@ public class ConnectionHandler {
             return false;
         }
 
-        if (isMultipartFormData(result.data)) {
-            return handleFileUpload(result, server);
+        if (result.isChunked) {
+            return handleChunkedRequest(result);
         }
 
-        if (result.isChunked) {
-            return handleChunkedRequest(result, server);
+        if (isMultipartFormData(result.data)) {
+            return handleFileUpload(result);
         }
 
         return result.complete;
@@ -74,15 +72,12 @@ public class ConnectionHandler {
 
     private void handlePayloadTooLarge() throws IOException {
         fileUploadHandler.cleanup();
-        httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
-        ByteBuffer buffer = ByteBuffer.wrap(httpResponse.toString().getBytes());
-        while (buffer.hasRemaining()) {
-            channel.write(buffer);
-        }
-        this.close();
+        httpResponse = errorHandler.handle(serverSelection.activeServer, HttpStatus.PAYLOAD_TOO_LARGE);
+        responseWriter.prepare(httpResponse);
+        pendingResponse = true;
     }
 
-    private boolean handleFileUpload(RequestReader.ReadResult result, ServerBlock server) throws IOException {
+    private boolean handleFileUpload(RequestReader.ReadResult result) throws IOException {
         if (!isFileUpload) {
             isFileUpload = true;
             String boundary = extractBoundary(new String(result.data));
@@ -97,7 +92,7 @@ public class ConnectionHandler {
         return fileUploadHandler.isComplete();
     }
 
-    private boolean handleChunkedRequest(RequestReader.ReadResult result, ServerBlock server) throws IOException {
+    private boolean handleChunkedRequest(RequestReader.ReadResult result) throws IOException {
         ChunkedTransferDecoder.DecodeResult chunkResult = 
             ChunkedTransferDecoder.decode(result.data, result.headerEndIndex);
 
@@ -105,16 +100,34 @@ public class ConnectionHandler {
             return false;
         }
 
-        if (chunkResult.body.length > server.getClientMaxBodyBytes()) {
+        if (chunkResult.body.length > serverSelection.activeServer.getClientMaxBodyBytes()) {
             handlePayloadTooLarge();
             return false;
+        }
+
+        // Initialize multipart upload state for chunked uploads
+        if (!isFileUpload && isMultipartFormData(result.data)) {
+            isFileUpload = true;
+            String boundary = extractBoundary(new String(result.data, 0, result.headerEndIndex, StandardCharsets.ISO_8859_1));
+            fileUploadHandler.initialize(boundary);
         }
 
         if (isFileUpload && !fileUploadHandler.isComplete()) {
             fileUploadHandler.processData(chunkResult.body);
         }
 
+        normalizeChunkedRawRequest(result, chunkResult.body);
         return isFileUpload ? fileUploadHandler.isComplete() : true;
+    }
+
+    private void normalizeChunkedRawRequest(RequestReader.ReadResult result, byte[] decodedBody) throws IOException {
+        String headers = new String(result.data, 0, result.headerEndIndex, StandardCharsets.ISO_8859_1);
+        String normalizedHeaders = ChunkedTransferDecoder.normalizeHeaders(headers, decodedBody.length);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(normalizedHeaders.getBytes(StandardCharsets.ISO_8859_1));
+        out.write(decodedBody);
+        requestReader.replaceRawBytes(out.toByteArray());
     }
 
     public File getUploadedFile() {
@@ -152,12 +165,16 @@ public class ConnectionHandler {
         try {
             httpRequest = ParseRequest.processRequest(requestReader.getRawBytes());
             httpRequest.setConnectionHandler(this);
+            serverSelection.selectForHost(httpRequest.getHeader("Host"));
+            if (serverSelection.activeServer == null && portContext != null) {
+                serverSelection.activeServer = portContext.getDefaultServer();
+            }
             SessionManager.getInstance().attachSession(httpRequest);
-            httpResponse = router.routeRequest(httpRequest, server);
+            httpResponse = router.routeRequest(httpRequest, serverSelection.activeServer);
             SessionManager.getInstance().appendSessionCookie(httpRequest, httpResponse);
         } catch (Exception ex) {
             logger.error("Error processing request", ex);
-            httpResponse = errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
+            httpResponse = errorHandler.handle(serverSelection.activeServer, HttpStatus.INTERNAL_SERVER_ERROR);
         }
         responseWriter.prepare(httpResponse);
     }
@@ -171,6 +188,7 @@ public class ConnectionHandler {
     }
 
     public void close() throws IOException {
+        EventLoop.removeTracking(channel);
         channel.close();
     }
 
@@ -181,5 +199,42 @@ public class ConnectionHandler {
         isFileUpload = false;
         httpRequest = null;
         httpResponse = null;
+        pendingResponse = false;
+    }
+
+    private static class ServerPortSelection {
+        private final Server.PortContext portContext;
+        private ServerBlock activeServer;
+
+        ServerPortSelection(ServerBlock defaultServer) {
+            this.portContext = null;
+            this.activeServer = defaultServer;
+        }
+
+        ServerPortSelection(Server.PortContext portContext) {
+            this.portContext = portContext;
+            this.activeServer = portContext.getDefaultServer();
+        }
+
+        ServerPortSelection(Server.PortContext portContext, ServerBlock defaultServer) {
+            this.portContext = portContext;
+            this.activeServer = defaultServer != null ? defaultServer : portContext.getDefaultServer();
+        }
+
+        void selectForHost(String hostHeader) {
+            if (portContext == null) {
+                return;
+            }
+            ServerBlock selected = portContext.selectServer(hostHeader);
+            if (selected != null) {
+                activeServer = selected;
+            } else {
+                activeServer = portContext.getDefaultServer();
+            }
+        }
+    }
+
+    public boolean hasPendingResponse() {
+        return pendingResponse;
     }
 }
