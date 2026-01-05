@@ -21,6 +21,7 @@ import java.util.Arrays;
 import routing.Router;
 import util.SonicLogger;
 import util.MimeTypes;
+import session.SessionManager;
 
 public class ConnectionHandler {
 
@@ -353,7 +354,9 @@ public class ConnectionHandler {
         try {
             httpRequest = ParseRequest.processRequest(rawBytes.toByteArray());
             httpRequest.setConnectionHandler(this);
+            SessionManager.getInstance().attachSession(httpRequest);
             httpResponse = router.routeRequest(httpRequest, server);
+            SessionManager.getInstance().appendSessionCookie(httpRequest, httpResponse);
         } catch (Exception ex) {
             logger.error("Error processing request", ex);
             httpResponse = errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);

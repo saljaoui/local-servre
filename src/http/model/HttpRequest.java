@@ -19,6 +19,9 @@ public class HttpRequest {
     private File uploadedFile;
     private String uploadFileName;
     private ConnectionHandler connectionHandler;
+    private String sessionId;
+    private Map<String, String> sessionData;
+    private boolean newSession;
 
     public HttpRequest() {
         this.headers = new HashMap<>();
@@ -67,6 +70,9 @@ public class HttpRequest {
     public Map<String, String> getHeaders() { return headers; }
     public Map<String, String> getQueryParams() { return queryParams; }
     public Map<String, String> getCookies() { return cookies; }
+    public String getSessionId() { return sessionId; }
+    public boolean isNewSession() { return newSession; }
+    public Map<String, String> getSession() { return sessionData; }
 
     public byte[] getBody() {
         if (isFileUpload()) {
@@ -84,6 +90,9 @@ public class HttpRequest {
     public void setHttpVersion(String v) { this.httpVersion = v; }
     public void setHeaders(Map<String, String> headers) { this.headers = headers; }
     public void setBody(byte[] body) { this.body = body; }
+    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public void setSessionData(Map<String, String> sessionData) { this.sessionData = sessionData; }
+    public void setNewSession(boolean newSession) { this.newSession = newSession; }
 
     // ========== HELPER METHODS ==========
     

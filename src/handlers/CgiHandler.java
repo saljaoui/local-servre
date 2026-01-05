@@ -107,6 +107,8 @@ public class CgiHandler {
         
         String ct = getHeader(request, "Content-Type", "");
         if (!ct.isEmpty()) env.put("CONTENT_TYPE", ct);
+        String cookie = getHeader(request, "Cookie", "");
+        if (!cookie.isEmpty()) env.put("HTTP_COOKIE", cookie);
         
         env.put("PATH_INFO", script.getAbsolutePath());
         env.put("SERVER_PROTOCOL", request.getHttpVersion() != null && !request.getHttpVersion().isEmpty()
