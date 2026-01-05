@@ -1,11 +1,5 @@
 package server;
 
-import config.model.WebServerConfig.ServerBlock;
-import handlers.ErrorHandler;
-import http.ParseRequest;
-import http.model.HttpRequest;
-import http.model.HttpResponse;
-import http.model.HttpStatus;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -18,10 +12,15 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 
+import config.model.WebServerConfig.ServerBlock;
+import handlers.ErrorHandler;
+import http.ParseRequest;
+import http.model.HttpRequest;
+import http.model.HttpResponse;
+import http.model.HttpStatus;
 import routing.Router;
-import util.SonicLogger;
-import util.MimeTypes;
 import session.SessionManager;
+import util.SonicLogger;
 
 public class ConnectionHandler {
 
@@ -166,52 +165,52 @@ public class ConnectionHandler {
     }
 
     // Add a method to get the uploaded filename
-    public String getUploadFileName() {
-        if (uploadFileName == null && isFileUpload) {
-            // Extract filename from the raw request data
-            String temp = new String(rawBytes.toByteArray());
-            uploadFileName = extractFilename(temp, boundary);
-        }
-        return uploadFileName;
-    }
+    // public String getUploadFileName() {
+    //     if (uploadFileName == null && isFileUpload) {
+    //         // Extract filename from the raw request data
+    //         String temp = new String(rawBytes.toByteArray());
+    //         uploadFileName = extractFilename(temp, boundary);
+    //     }
+    //     return uploadFileName;
+    // }
 
-    private String extractFilename(String headerString, String boundary) {
-        // Find the first part of the multipart data
-        int firstBoundary = headerString.indexOf("--" + boundary);
-        if (firstBoundary == -1)
-            return null;
+    // private String extractFilename(String headerString, String boundary) {
+    //     // Find the first part of the multipart data
+    //     int firstBoundary = headerString.indexOf("--" + boundary);
+    //     if (firstBoundary == -1)
+    //         return null;
 
-        int secondBoundary = headerString.indexOf("--" + boundary, firstBoundary + 2);
-        if (secondBoundary == -1)
-            return null;
+    //     int secondBoundary = headerString.indexOf("--" + boundary, firstBoundary + 2);
+    //     if (secondBoundary == -1)
+    //         return null;
 
-        String firstPart = headerString.substring(firstBoundary, secondBoundary);
+    //     String firstPart = headerString.substring(firstBoundary, secondBoundary);
 
-        // Find Content-Disposition header
-        int dispositionIndex = firstPart.indexOf("Content-Disposition:");
-        if (dispositionIndex == -1)
-            return null;
+    //     // Find Content-Disposition header
+    //     int dispositionIndex = firstPart.indexOf("Content-Disposition:");
+    //     if (dispositionIndex == -1)
+    //         return null;
 
-        // Find filename parameter
-        int filenameIndex = firstPart.indexOf("filename=\"", dispositionIndex);
-        if (filenameIndex == -1)
-            return null;
+    //     // Find filename parameter
+    //     int filenameIndex = firstPart.indexOf("filename=\"", dispositionIndex);
+    //     if (filenameIndex == -1)
+    //         return null;
 
-        int filenameStart = filenameIndex + 10;
-        int filenameEnd = firstPart.indexOf("\"", filenameStart);
-        if (filenameEnd == -1)
-            return null;
+    //     int filenameStart = filenameIndex + 10;
+    //     int filenameEnd = firstPart.indexOf("\"", filenameStart);
+    //     if (filenameEnd == -1)
+    //         return null;
 
-        String filename = firstPart.substring(filenameStart, filenameEnd);
+    //     String filename = firstPart.substring(filenameStart, filenameEnd);
 
-        // Extract just the filename without path
-        int lastSlash = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
-        if (lastSlash != -1) {
-            filename = filename.substring(lastSlash + 1);
-        }
+    //     // Extract just the filename without path
+    //     int lastSlash = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
+    //     if (lastSlash != -1) {
+    //         filename = filename.substring(lastSlash + 1);
+    //     }
 
-        return filename.isEmpty() ? null : filename;
-    }
+    //     return filename.isEmpty() ? null : filename;
+    // }
 
     public void cleanupTempFile() {
         try {
@@ -236,6 +235,7 @@ public class ConnectionHandler {
         
         // If we haven't found the start of the file content yet
         if (!foundFileStart) {
+            // System.out.println("Searching for start of file content...");
             String dataStr = new String(bodyData);
             int contentStart = dataStr.indexOf("\r\n\r\n");
             
@@ -316,7 +316,7 @@ public class ConnectionHandler {
         // Create metadata file
         File metadataFile = new File(tempFile.getParent(), tempFile.getName() + ".meta");
         try (FileWriter writer = new FileWriter(metadataFile)) {
-            writer.write("original_filename=" + getUploadFileName() + "\n");
+            // writer.write("original_filename=" + getUploadFileName() + "\n");
             writer.write("upload_time=" + System.currentTimeMillis() + "\n");
         }
 

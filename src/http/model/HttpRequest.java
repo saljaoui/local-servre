@@ -49,12 +49,12 @@ public class HttpRequest {
         return uploadedFile;
     }
 
-    public String getUploadFileName() {
-        if (uploadFileName == null && connectionHandler != null) {
-            uploadFileName = connectionHandler.getUploadFileName();
-        }
-        return uploadFileName;
-    }
+    // public String getUploadFileName() {
+    //     if (uploadFileName == null && connectionHandler != null) {
+    //         uploadFileName = connectionHandler.getUploadFileName();
+    //     }
+    //     return uploadFileName;
+    // }
 
     public void setConnectionHandler(ConnectionHandler connectionHandler) {
         this.connectionHandler = connectionHandler;
