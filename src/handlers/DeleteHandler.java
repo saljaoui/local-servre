@@ -8,9 +8,10 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import routing.model.Route;
+import util.SonicLogger;
  
 public class DeleteHandler {
-
+    private static final SonicLogger logger = SonicLogger.getLogger(DeleteHandler.class);
     private final ErrorHandler errorHandler = new ErrorHandler();
     
     public HttpResponse handle(HttpRequest request, Route route, ServerBlock server) {
@@ -21,36 +22,54 @@ public class DeleteHandler {
             return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
         
-        // Determine the file to delete based on route and request path
+        // Get root directory
         String root = route.getRoot();
         if (root == null || root.isEmpty()) {
-            root = "www";
+            root = server.getRoot();
+        }
+        if (root == null || root.isEmpty()) {
+            root = "./www";
         }
         
-        // Remove leading slash from path for file operations
-        String filePathStr = path.startsWith("/") ? path.substring(1) : path;
-        File fileToDelete = new File(root, filePathStr);
+        // Extract relative path by removing route prefix
+        String relativePath = path;
+        if (path.startsWith(route.getPath())) {
+            relativePath = path.substring(route.getPath().length());
+        }
+        
+        // Remove leading slash
+        if (relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+        
+        // Build file path
+        File fileToDelete = new File(root, relativePath);
+        
+        logger.debug("DELETE request - Path: " + path + ", Root: " + root + 
+                    ", Relative: " + relativePath + ", File: " + fileToDelete.getAbsolutePath());
         
         // Security check: ensure the file is within the allowed directory
         try {
             String canonicalRoot = new File(root).getCanonicalPath();
             String canonicalFile = fileToDelete.getCanonicalPath();
             
-            if (!canonicalFile.startsWith(canonicalRoot + File.separator)) {
+            if (!canonicalFile.startsWith(canonicalRoot)) {
+                logger.warn("Path traversal blocked: " + path);
                 return errorHandler.handle(server, HttpStatus.FORBIDDEN);
             }
         } catch (IOException e) {
+            logger.error("Error resolving canonical path", e);
             return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
         
         // Check if file exists
         if (!fileToDelete.exists()) {
+            logger.debug("File not found: " + fileToDelete.getAbsolutePath());
             return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
         
         // Check if it's a directory
         if (fileToDelete.isDirectory()) {
-            // Optionally: recursively delete or return error
             File[] files = fileToDelete.listFiles();
             if (files != null && files.length > 0) {
                 return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
@@ -58,19 +77,20 @@ public class DeleteHandler {
         }
         
         // Attempt to delete the file
-        boolean deleted;
         try {
-            deleted = Files.deleteIfExists(fileToDelete.toPath());
+            boolean deleted = Files.deleteIfExists(fileToDelete.toPath());
+            
+            if (deleted) {
+                logger.info("File deleted: " + fileToDelete.getAbsolutePath());
+                response.setStatus(HttpStatus.OK);
+                response.setBody(("Deleted: " + path).getBytes());
+                response.addHeader("Content-Type", "text/plain");
+            } else {
+                return errorHandler.handle(server, HttpStatus.NOT_FOUND);
+            }
         } catch (IOException e) {
+            logger.error("Error deleting file: " + fileToDelete.getAbsolutePath(), e);
             return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        
-        if (deleted) {
-            response.setStatus(HttpStatus.OK);
-            response.setBody(("Deleted: " + path).getBytes());
-            response.addHeader("Content-Type", "text/plain");
-        } else {
-            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
         
         return response;

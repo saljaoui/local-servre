@@ -1,16 +1,16 @@
 {
-  "timeouts": 100,
+  "timeouts": 30000,
   "servers": [
     {
       "name": "main",
       "listen": {
         "host": "0.0.0.0",
         "port": 8080,
-        "default": false
+        "default": true
       },
       "serverNames": ["localhost", "main.com"],
       "root": "./www/main",
-      "clientMaxBodyBytes": 1048570006,
+      "clientMaxBodyBytes": 10485760,
       "errorPages": {
         "400": "./error_pages/400.html",
         "403": "./error_pages/403.html",
@@ -28,13 +28,19 @@
           "autoIndex": true
         },
         {
+          "path": "/readonly",
+          "methods": ["GET"],
+          "root": "./www/main",
+          "autoIndex": true
+        },
+        {
           "path": "/simo",
           "root": "./www/main",
           "methods": ["POST", "GET"]
         },
         {
           "path": "/uploads",
-          "methods": ["POST", "DELETE", "OPTIONS"],
+          "methods": ["POST", "DELETE", "GET"],
           "root": "./www/main",
           "index": "",
           "autoIndex": true,
@@ -61,7 +67,7 @@
         "port": 8081,
         "default": false
       },
-      "serverNames": ["localhost", "upload.com"],
+      "serverNames": ["upload.com"],
       "root": "./www/main",
       "clientMaxBodyBytes": 1048576,
       "errorPages": {
@@ -117,10 +123,10 @@
       "name": "server-8082",
       "listen": {
         "host": "0.0.0.0",
-        "port": 8080,
+        "port": 8082,
         "default": false
       },
-      "serverNames": ["localhost", "cgi.com"],
+      "serverNames": ["test.com", "cgi.com"],
       "root": "./www/main",
       "clientMaxBodyBytes": 1048576,
       "errorPages": {
