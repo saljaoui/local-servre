@@ -6,6 +6,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.channels.SocketChannel;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -44,6 +45,8 @@ public class ConnectionHandler {
     private String boundary;
     private String uploadFileName;
     private boolean headersParsed = false;
+    private boolean isChunked = false;
+    private int headerEndIndex = -1;
     private byte[] remainingHeaderData;
     private boolean requestComplete = false;
     private boolean headersReceived = false;
@@ -104,16 +107,21 @@ public class ConnectionHandler {
         }
         rawBytes.write(data);
         
-        // Parse headers to get Content-Length
+        // Parse headers to get Content-Length or Transfer-Encoding
         if (!headersParsed) {
             String temp = new String(rawBytes.toByteArray());
             int idx = temp.indexOf("\r\n\r\n");
             if (idx != -1) {
                 headersParsed = true;
+                headerEndIndex = idx;
 
                 for (String line : temp.substring(0, idx).split("\r\n")) {
-                    if (line.toLowerCase().startsWith("content-length:")) {
+                    String lower = line.toLowerCase();
+                    if (lower.startsWith("content-length:")) {
                         expectedContentLength = Long.parseLong(line.split(":")[1].trim());
+                    } else if (lower.startsWith("transfer-encoding:") && lower.contains("chunked")) {
+                        isChunked = true;
+                        expectedContentLength = 0;
                     }
                 }
 
@@ -125,16 +133,48 @@ public class ConnectionHandler {
 
                     // Process any body data that came with the headers
                     byte[] bodyData = Arrays.copyOfRange(rawBytes.toByteArray(), idx + 4, rawBytes.size());
-                    if (bodyData.length > 0) {
+                    if (bodyData.length > 0 && !isChunked) {
                         processFileData(bodyData);
                     }
                 }
             }
-        } else if (isFileUpload && !fileComplete) {
+        } else if (isFileUpload && !fileComplete && !isChunked) {
             processFileData(data);
         }
 
-        if (headersParsed) {
+        if (headersParsed && isChunked) {
+            ChunkDecodeResult chunkResult = tryDecodeChunked(rawBytes.toByteArray(), headerEndIndex);
+            if (!chunkResult.complete) {
+                return false; // need more data
+            }
+
+            byte[] decodedBody = chunkResult.body;
+            if (decodedBody.length > server.getClientMaxBodyBytes()) {
+                cleanupTempFile();
+                httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
+                ByteBuffer buffer = ByteBuffer.wrap(httpResponse.toString().getBytes());
+                while (buffer.hasRemaining()) {
+                    channel.write(buffer);
+                }
+                this.close();
+                return false;
+            }
+
+            // Rebuild raw request with Content-Length and decoded body
+            String headersPart = new String(rawBytes.toByteArray(), 0, headerEndIndex, StandardCharsets.ISO_8859_1);
+            String normalizedHeaders = normalizeHeaders(headersPart, decodedBody.length);
+
+            rawBytes = new ByteArrayOutputStream();
+            rawBytes.write(normalizedHeaders.getBytes(StandardCharsets.ISO_8859_1));
+            rawBytes.write(decodedBody);
+            expectedContentLength = decodedBody.length;
+
+            if (isFileUpload && !fileComplete) {
+                processFileData(decodedBody);
+            }
+
+            requestComplete = isFileUpload ? fileComplete : true;
+        } else if (headersParsed) {
             if (isFileUpload) {
                 requestComplete = fileComplete || (expectedContentLength == 0 || bytesWrittenToFile >= expectedContentLength);
             } else {
@@ -415,17 +455,19 @@ public class ConnectionHandler {
         expectedContentLength = 0;
         totalBytesRead = 0;
         headersParsed = false;
+        isChunked = false;
         isFileUpload = false;
         bytesWrittenToFile = 0;
         requestComplete = false;
         boundary = null;
+        headerEndIndex = -1;
         uploadFileName = null;
         foundFileStart = false;
         inFileContent = false;
         fileComplete = false;
 
         if (rawBytes != null) {
-            rawBytes.reset();
+            rawBytes = new ByteArrayOutputStream();
         }
 
         httpRequest = null;
@@ -440,5 +482,87 @@ public class ConnectionHandler {
             }
         }
         return null;
+    }
+
+    private String normalizeHeaders(String headerSection, long contentLength) {
+        StringBuilder sb = new StringBuilder();
+        String[] lines = headerSection.split("\r\n");
+        for (String line : lines) {
+            String lower = line.toLowerCase();
+            if (lower.startsWith("transfer-encoding:")) continue;
+            if (lower.startsWith("content-length:")) continue;
+            sb.append(line).append("\r\n");
+        }
+        sb.append("Content-Length: ").append(contentLength).append("\r\n\r\n");
+        return sb.toString();
+    }
+
+    private ChunkDecodeResult tryDecodeChunked(byte[] data, int headerEnd) {
+        int idx = headerEnd + 4;
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+
+        while (idx < data.length) {
+            int lineEnd = indexOfCrlf(data, idx);
+            if (lineEnd == -1) {
+                return ChunkDecodeResult.incomplete();
+            }
+
+            String sizeLine = new String(data, idx, lineEnd - idx, StandardCharsets.ISO_8859_1).trim();
+            int chunkSize;
+            try {
+                chunkSize = Integer.parseInt(sizeLine, 16);
+            } catch (NumberFormatException e) {
+                return ChunkDecodeResult.incomplete();
+            }
+
+            idx = lineEnd + 2; // past CRLF
+            if (chunkSize == 0) {
+                if (idx + 2 <= data.length) {
+                    return ChunkDecodeResult.complete(body.toByteArray());
+                }
+                return ChunkDecodeResult.incomplete();
+            }
+
+            if (idx + chunkSize > data.length) {
+                return ChunkDecodeResult.incomplete();
+            }
+
+            body.write(data, idx, chunkSize);
+            idx += chunkSize;
+
+            if (idx + 2 > data.length) {
+                return ChunkDecodeResult.incomplete();
+            }
+            idx += 2; // skip trailing CRLF
+        }
+
+        return ChunkDecodeResult.incomplete();
+    }
+
+    private int indexOfCrlf(byte[] data, int start) {
+        for (int i = start; i < data.length - 1; i++) {
+            if (data[i] == '\r' && data[i + 1] == '\n') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static class ChunkDecodeResult {
+        final boolean complete;
+        final byte[] body;
+
+        private ChunkDecodeResult(boolean complete, byte[] body) {
+            this.complete = complete;
+            this.body = body;
+        }
+
+        static ChunkDecodeResult complete(byte[] body) {
+            return new ChunkDecodeResult(true, body);
+        }
+
+        static ChunkDecodeResult incomplete() {
+            return new ChunkDecodeResult(false, null);
+        }
     }
 }

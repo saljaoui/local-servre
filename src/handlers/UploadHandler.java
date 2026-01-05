@@ -38,19 +38,16 @@ public class UploadHandler {
             uploadDirectory.mkdirs();
         }
 
-        // 4. Get Body
-        // byte[] rawBody = request.getBody()
+        // 4. Get Body (multipart upload saved to temp file or raw body)
         File uploaFile = request.getUploadedFile();
-        // System.out.println("UploadHandler.handle() "+rawBody.toString());
-        if (uploaFile == null || !uploaFile.exists()) {
+        byte[] rawBody = request.getBody();
+        boolean hasFile = uploaFile != null && uploaFile.exists();
+        boolean hasRaw = rawBody != null && rawBody.length > 0;
+        if (!hasFile && !hasRaw) {
             return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
 
-        long fileSize = uploaFile.length();
-
-        // 5. Call Parser (Extract Clean Content)
- 
-        System.out.println("[CH] [UPLOAD] Calling MultipartParser...");
+        long fileSize = hasFile ? uploaFile.length() : rawBody.length;
 
         // 6. Check Size (Server Limit)
         long maxBodySize = server.getClientMaxBodyBytes();
@@ -58,21 +55,27 @@ public class UploadHandler {
             return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
-     
-String filename =
-        System.currentTimeMillis() + "_" +
-        java.util.UUID.randomUUID().toString().substring(0, 8);
+        String filename =
+            System.currentTimeMillis() + "_" +
+            java.util.UUID.randomUUID().toString().substring(0, 8);
         // 7. Create destination file
         File destinationFile = new File(uploadDirectory, filename); 
 
         try {
-            // 8. Move temp file to destination
-            Files.move(
-                    uploaFile.toPath(),
-                    destinationFile.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING);
+            if (hasFile) {
+                // 8a. Move temp file to destination
+                Files.move(
+                        uploaFile.toPath(),
+                        destinationFile.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                // 8b. Write raw body to destination
+                Files.write(destinationFile.toPath(), rawBody);
+            }
 
-            System.out.println("[UPLOAD] File moved from: " + uploaFile.getAbsolutePath());
+            if (hasFile) {
+                System.out.println("[UPLOAD] File moved from: " + uploaFile.getAbsolutePath());
+            }
             System.out.println("[UPLOAD] File moved to: " + destinationFile.getAbsolutePath());
             System.out.println("[UPLOAD] File size: " + destinationFile.length() + " bytes");
 
