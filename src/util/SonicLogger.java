@@ -3,9 +3,6 @@ package util;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-/**
- * SonicServe Logger - Clean and simple Spring Boot-style logging
- */
 public class SonicLogger {
     
     // Colors

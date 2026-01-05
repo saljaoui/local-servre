@@ -26,7 +26,6 @@ public class StaticHandler {
         switch (request.getMethod()) {
             case "GET":    return handleGet(filePath, request, route, server);
             case "POST":   return handlePost(filePath, request, route, server);
-            case "DELETE": return handleDelete(filePath, server);
             default:       return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
     }
@@ -101,31 +100,6 @@ public class StaticHandler {
             response.addHeader("Content-Type", "text/plain");
         } catch (IOException e) {
             logger.error("Error uploading file: " + filePath, e);
-            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        return response;
-    }
-
-    private HttpResponse handleDelete(Path filePath, ServerBlock server) {
-        HttpResponse response = new HttpResponse();
-        File file = filePath.toFile();
-        
-        if (!file.exists()) {
-            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
-        }
-        
-        if (file.isDirectory()) {
-            response.setStatusCode(403);
-            response.setBody("Cannot delete directory".getBytes());
-            response.addHeader("Content-Type", "text/plain");
-            return response;
-        }
-        
-        try {
-            Files.delete(filePath);
-            response.setStatus(HttpStatus.NO_CONTENT);
-        } catch (IOException e) {
-            logger.error("Error deleting file: " + filePath, e);
             return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return response;

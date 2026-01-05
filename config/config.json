@@ -1,12 +1,12 @@
 {
-  "timeouts": 1500,
+  "timeouts": 100,
   "servers": [
     {
       "name": "main",
       "listen": {
         "host": "0.0.0.0",
         "port": 8080,
-        "default": true
+        "default": false
       },
       "serverNames": ["localhost", "main.com"],
       "root": "./www/main",
@@ -58,7 +58,7 @@
       "name": "server-8081",
       "listen": {
         "host": "0.0.0.0",
-        "port": 8080,
+        "port": 8081,
         "default": false
       },
       "serverNames": ["localhost", "upload.com"],

@@ -17,7 +17,6 @@ public class HttpRequest {
     private Map<String, String> cookies;
     private byte[] body;
     private File uploadedFile;
-    private String uploadFileName;
     private ConnectionHandler connectionHandler;
     private String sessionId;
     private Map<String, String> sessionData;
@@ -48,13 +47,6 @@ public class HttpRequest {
         }
         return uploadedFile;
     }
-
-    // public String getUploadFileName() {
-    //     if (uploadFileName == null && connectionHandler != null) {
-    //         uploadFileName = connectionHandler.getUploadFileName();
-    //     }
-    //     return uploadFileName;
-    // }
 
     public void setConnectionHandler(ConnectionHandler connectionHandler) {
         this.connectionHandler = connectionHandler;
@@ -99,7 +91,7 @@ public class HttpRequest {
     public void addHeader(String name, String value) {
         this.headers.put(name, value);
     }
-
+    
     public void setHeaders(String name, String value) {
         addHeader(name, value);
     }

@@ -1,13 +1,7 @@
 package config;
 
-
-
 import java.util.*;
 
-/**
- * Core JSON parsing utilities - handles the tricky character-by-character parsing
- * Reusable for other JSON parsing needs
- */
 public class JsonParser {
     
     public static Map<String, String> splitTopLevel(String json) {

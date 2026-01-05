@@ -206,19 +206,9 @@ public class ConnectionHandler {
         private final Server.PortContext portContext;
         private ServerBlock activeServer;
 
-        ServerPortSelection(ServerBlock defaultServer) {
-            this.portContext = null;
-            this.activeServer = defaultServer;
-        }
-
         ServerPortSelection(Server.PortContext portContext) {
             this.portContext = portContext;
             this.activeServer = portContext.getDefaultServer();
-        }
-
-        ServerPortSelection(Server.PortContext portContext, ServerBlock defaultServer) {
-            this.portContext = portContext;
-            this.activeServer = defaultServer != null ? defaultServer : portContext.getDefaultServer();
         }
 
         void selectForHost(String hostHeader) {

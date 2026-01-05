@@ -2,9 +2,6 @@ package config;
 
 import java.util.*;
 
-/**
- * Handles type conversion and primitive value parsing
- */
 public class ValueParsers {
     
     public static Map<String, String> parseStringMap(String json) {

@@ -5,37 +5,34 @@ import handlers.model.Cgi;
 import handlers.model.Upload;
 import routing.model.Redirect;
 import routing.model.Route;
+import util.SonicLogger;
 
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 
-/**
- * Main entry point for loading and parsing web server configuration
- * Delegates low-level JSON parsing to JsonParser and type conversion to
- * ValueParsers
- */
 public class WebConfigLoader {
     private static final String FILE_PATH = "./config/config.json";
+    private static final SonicLogger logger = SonicLogger.getLogger(WebConfigLoader.class);
 
     public static WebServerConfig load() {
         try {
             String content = Files.readString(Path.of(FILE_PATH));
             WebServerConfig config = parseConfig(content);
-            var errors = config.validateAndPrune();
+            List<String> errors = config.validateAndPrune();
             if (!errors.isEmpty()) {
-                errors.forEach(err -> System.err.println("Config validation: " + err));
+                errors.forEach(err -> logger.error("Config validation: " + err));
             }
             if (config.getServers() == null || config.getServers().isEmpty()) {
                 throw new IllegalArgumentException("No valid servers configured");
             }
             return config;
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Failed to load configuration file: " + e.getMessage(), e);
             System.exit(1);
             return null;
         } catch (IllegalArgumentException e) {
-            System.err.println("Invalid configuration: " + e.getMessage());
+            logger.error("Invalid configuration: " + e.getMessage());
             System.exit(1);
             return null;
         }

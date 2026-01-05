@@ -11,13 +11,8 @@ import routing.model.Route;
  
 public class DeleteHandler {
 
-    
     private final ErrorHandler errorHandler = new ErrorHandler();
     
-    /**
-     * Handle DELETE requests.
-     * Deletes the specified file or resource.
-     */
     public HttpResponse handle(HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
         

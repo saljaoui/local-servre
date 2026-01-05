@@ -39,17 +39,4 @@ public class ErrorHandler {
         response.addHeader("Content-Length", String.valueOf(fallbackBody.length()));
         return response;
     }
-
-    public HttpResponse notFound() {
-        return handle(null, http.model.HttpStatus.NOT_FOUND);
-    }
-
-    public HttpResponse notFound(ServerBlock server) {
-        return handle(server, http.model.HttpStatus.NOT_FOUND);
-    }
-
-    public HttpResponse methodNotAllowed(ServerBlock server) {
-        return handle(server, http.model.HttpStatus.METHOD_NOT_ALLOWED);
-    }
-
 }

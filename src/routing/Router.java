@@ -9,9 +9,12 @@ import handlers.StaticHandler;
 import handlers.UploadHandler;
 import http.model.HttpRequest;
 import http.model.HttpResponse;
- import routing.model.Route;
+import http.model.HttpStatus;
+import routing.model.Route;
+import util.SonicLogger;
 
 public class Router {
+    private static final SonicLogger logger = SonicLogger.getLogger(Router.class);
 
     private final StaticHandler staticHandler;
     private final CgiHandler cgiHandler;
@@ -31,15 +34,16 @@ public class Router {
 
     public HttpResponse routeRequest(HttpRequest request, ServerBlock server) {
         Route route = routerMatch(request, server);
-         if (route == null) {
-            return errorHandler.notFound(server);
+        if (route == null) {
+            return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
         var method = request.getMethod(); 
        
         if (!route.isMethodAllowed(method)) { 
-            return errorHandler.methodNotAllowed(server);
+            return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
+
         // Handle redirects first
         if (route.isRedirect()) {
             return redirectHandler.handle(route);
@@ -51,9 +55,8 @@ public class Router {
         }
 
         // Handle file uploads
-        // System.out.println("[DEBUG] Checking upload for route: " + route.getu);
         if (route.isUploadEnabled() && "POST".equalsIgnoreCase(method)) {
-            System.out.println("[DEBUG] Handling upload for route: " + route.getUpload().getFileField());
+            logger.debug("Handling upload for route: " + route.getUpload().getFileField());
             return uploadHandler.handle(request, route, server);
         }
 
@@ -66,32 +69,30 @@ public class Router {
     }
 
     private Route routerMatch(HttpRequest request, ServerBlock server) {
-    if (server.getRoutes() == null || server.getRoutes().isEmpty()) {
-        return null;
-    }
-
-    String requestPath = request.getPath();
-    Route bestMatch = null;
-    int longestMatch = 0;
-
-    for (Route route : server.getRoutes()) {
-        String routePath = route.getPath();
-
-        // A. Exact Match (e.g., "/")
-        if (requestPath.equals(routePath)) {
-            return route;
+        if (server.getRoutes() == null || server.getRoutes().isEmpty()) {
+            return null;
         }
 
-        // B. Prefix Match (e.g., Route="/uploads" Request="/uploads/file.jpg")
-        // We check if request starts with route path
-        if (requestPath.startsWith(routePath)) {
-            // Ensure route isn't just "/" and request is longer
-            if (routePath.length() > longestMatch) {
-                bestMatch = route;
-                longestMatch = routePath.length();
+        String requestPath = request.getPath();
+        Route bestMatch = null;
+        int longestMatch = 0;
+
+        for (Route route : server.getRoutes()) {
+            String routePath = route.getPath();
+
+            // Exact match
+            if (requestPath.equals(routePath)) {
+                return route;
+            }
+
+            // Prefix match
+            if (requestPath.startsWith(routePath)) {
+                if (routePath.length() > longestMatch) {
+                    bestMatch = route;
+                    longestMatch = routePath.length();
+                }
             }
         }
+        return bestMatch;
     }
-    return bestMatch;
-}
 }

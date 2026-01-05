@@ -3,17 +3,9 @@ package http;
 import http.model.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import util.SonicLogger;
 
 public class ParseRequest {
-    private static final SonicLogger logger = SonicLogger.getLogger(ParseRequest.class);
 
-    // Requirement: Parse HTTP messages manually
-
-    /**
-     * Parse complete HTTP request from string.
-     * Handles: Request Line, Headers (Host, Cookie, Content-Length), Body.
-     */
     public static HttpRequest processRequest(byte[] raw) throws Exception {
         HttpRequest req = new HttpRequest();
         byte[] sep = "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
@@ -58,9 +50,6 @@ public class ParseRequest {
         return req;
     }
 
-    /**
-     * Parse: GET /path HTTP/1.1
-     */
     private static void parseRequestLine(String line, HttpRequest request) {
         String[] p = line.split(" ");
         request.setMethod(p[0]);

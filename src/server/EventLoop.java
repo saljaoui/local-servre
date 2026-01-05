@@ -11,20 +11,17 @@ import util.SonicLogger;
 public class EventLoop {
 
     private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
-    
-    // Track connections and their last activity time
     private static final Map<SocketChannel, Long> connectionActivity = new HashMap<>();
 
     public static void loop(Selector selector, WebServerConfig config) throws IOException {
         logger.info("EventLoop started thread:" + Thread.currentThread().getName());
-        
+
         long timeoutMillis = config.getTimeouts();
         logger.info("Timeout configured: " + timeoutMillis + "ms");
-        
+
         while (true) {
-            // Check timeouts before selecting
             checkTimeouts(timeoutMillis);
-            
+
             // Wait for events (1 second timeout)
             selector.select(1000);
 
@@ -35,23 +32,23 @@ public class EventLoop {
                 SelectionKey key = keys.next();
                 keys.remove(); // Must remove after getting it
 
-            try {
-                // Handle different types of events
-                if (key.isAcceptable()) {
-                    handleAccept(key, selector);
-                }
-                if (!key.isValid())
-                    continue;
-                if (key.isReadable()) {
-                    handleRead(key);
-                }
-                if (!key.isValid())
-                    continue;
-                if (key.isWritable()) {
-                    handleWrite(key);
+                try {
+                    // Handle different types of events
+                    if (key.isAcceptable()) {
+                        handleAccept(key, selector);
+                    }
+                    if (!key.isValid())
+                        continue;
+                    if (key.isReadable()) {
+                        handleRead(key);
+                    }
+                    if (!key.isValid())
+                        continue;
+                    if (key.isWritable()) {
+                        handleWrite(key);
                     }
                 } catch (IOException e) {
-                    System.err.println("Error: " + e.getMessage());
+                    logger.error("Error handling event: " + e.getMessage(), e);
                     closeConnection(key);
                 }
             }
@@ -61,41 +58,41 @@ public class EventLoop {
     static void removeTracking(SocketChannel channel) {
         connectionActivity.remove(channel);
     }
-    
+
     private static void checkTimeouts(long timeoutMillis) {
         long currentTime = System.currentTimeMillis();
         Iterator<Map.Entry<SocketChannel, Long>> iter = connectionActivity.entrySet().iterator();
-        
+
         while (iter.hasNext()) {
             Map.Entry<SocketChannel, Long> entry = iter.next();
             long elapsed = currentTime - entry.getValue();
-            
+
             if (elapsed > timeoutMillis) {
                 SocketChannel channel = entry.getKey();
-                logger.info("Timeout for client: " + channel.socket().getRemoteSocketAddress() + 
-                           " (idle for " + elapsed + "ms)");
-                
+                logger.info("Timeout for client: " + channel.socket().getRemoteSocketAddress() +
+                        " (idle for " + elapsed + "ms)");
+
                 try {
                     sendTimeoutResponse(channel);
                     channel.close();
                 } catch (IOException e) {
                     logger.error("Error closing timed out connection: " + e.getMessage());
                 }
-                
+
                 iter.remove();
             }
         }
     }
-    
+
     private static void sendTimeoutResponse(SocketChannel channel) {
         try {
             String response = "HTTP/1.1 408 Request Timeout\r\n" +
-                             "Content-Type: text/html\r\n" +
-                             "Content-Length: 50\r\n" +
-                             "Connection: close\r\n" +
-                             "\r\n" +
-                             "<html><body><h1>408 Request Timeout</h1></body></html>";
-            
+                    "Content-Type: text/html\r\n" +
+                    "Content-Length: 50\r\n" +
+                    "Connection: close\r\n" +
+                    "\r\n" +
+                    "<html><body><h1>408 Request Timeout</h1></body></html>";
+
             java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(response.getBytes());
             channel.write(buffer);
         } catch (IOException e) {
@@ -120,24 +117,20 @@ public class EventLoop {
         SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
         ConnectionHandler handler = new ConnectionHandler(clientChannel, portContext);
         clientKey.attach(handler); // Attach handler to the key
-        
+
         // Track connection activity
         connectionActivity.put(clientChannel, System.currentTimeMillis());
 
-        System.out.println("Client connected: " + clientChannel.getRemoteAddress());
+        // logger.info("Client connected: " + clientChannel.getRemoteAddress());
     }
 
     private static void handleRead(SelectionKey key) throws IOException {
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
-        
+
         // Update activity time
         SocketChannel channel = (SocketChannel) key.channel();
         connectionActivity.put(channel, System.currentTimeMillis());
 
-        // Read data from client
-        // if (server.getClientMaxBodyBytes()) {
-
-        // }
         try {
             // Read data from the channel
             boolean requestComplete = handler.read();
@@ -189,11 +182,11 @@ public class EventLoop {
             key.cancel();
             return;
         }
-        
+
         // Update activity time
         SocketChannel channel = (SocketChannel) key.channel();
         connectionActivity.put(channel, System.currentTimeMillis());
-        
+
         try {
             boolean finished = handler.write();
             if (finished) {
@@ -208,6 +201,5 @@ public class EventLoop {
             }
         }
     }
-    
-   
+
 }

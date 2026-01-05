@@ -153,13 +153,11 @@ public class Server {
 
     public static class PortContext {
         private final ServerSocketChannel channel;
-        private final int port;
         private final java.util.List<ServerBlock> servers = new java.util.ArrayList<>();
         private ServerBlock defaultServer;
 
         public PortContext(ServerSocketChannel channel, int port) {
             this.channel = channel;
-            this.port = port;
         }
 
         public void addServer(ServerBlock serverBlock) {

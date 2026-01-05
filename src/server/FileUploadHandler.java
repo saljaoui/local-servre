@@ -5,8 +5,11 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Arrays;
+import util.SonicLogger;
 
 public class FileUploadHandler {
+    private static final SonicLogger logger = SonicLogger.getLogger(FileUploadHandler.class);
+    
     private File tempFile;
     private FileOutputStream tempFileOutputStream;
     private long bytesWrittenToFile = 0;
@@ -29,8 +32,8 @@ public class FileUploadHandler {
             writer.write("upload_time=" + System.currentTimeMillis() + "\n");
         }
 
-        System.out.println("Created temp file: " + tempFile.getPath());
-        System.out.println("Created metadata file: " + metadataFile.getPath());
+        logger.debug("Created temp file: " + tempFile.getPath());
+        logger.debug("Created metadata file: " + metadataFile.getPath());
     }
 
     public void processData(byte[] data) throws IOException {
@@ -45,7 +48,7 @@ public class FileUploadHandler {
         }
 
         if (bytesWrittenToFile % (1024 * 1024) == 0 && bytesWrittenToFile > 0) {
-            System.out.println("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB");
+            logger.info("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB");
         }
     }
 
@@ -74,7 +77,7 @@ public class FileUploadHandler {
             bytesWrittenToFile += boundaryPos;
             inFileContent = false;
             fileComplete = true;
-            System.out.println("File upload complete: " + bytesWrittenToFile + " bytes");
+            logger.info("File upload complete: " + bytesWrittenToFile + " bytes");
         } else {
             tempFileOutputStream.write(content);
             bytesWrittenToFile += content.length;
@@ -112,7 +115,7 @@ public class FileUploadHandler {
                 tempFileOutputStream = null;
             }
         } catch (IOException e) {
-            System.err.println("Error closing temp file output stream: " + e.getMessage());
+            logger.error("Error closing temp file output stream: " + e.getMessage(), e);
         }
 
         return tempFile;
@@ -127,10 +130,10 @@ public class FileUploadHandler {
 
             if (tempFile != null && tempFile.exists()) {
                 tempFile.delete();
-                System.out.println("Deleted temp file: " + tempFile.getPath());
+                logger.debug("Deleted temp file: " + tempFile.getPath());
             }
         } catch (IOException e) {
-            System.err.println("Error cleaning up temp file: " + e.getMessage());
+            logger.error("Error cleaning up temp file: " + e.getMessage(), e);
         }
     }
 
