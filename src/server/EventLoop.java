@@ -1,11 +1,15 @@
 package server;
 
-import config.model.WebServerConfig;
 import java.io.IOException;
-import java.nio.channels.*;
-import java.util.Iterator;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+
+import config.model.WebServerConfig;
 import util.SonicLogger;
 
 public class EventLoop {
@@ -115,7 +119,7 @@ public class EventLoop {
 
         // Register for READ events and attach a Handler
         SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
-        ConnectionHandler handler = new ConnectionHandler(clientChannel, portContext);
+        ConnectionHandler handler = new ConnectionHandler(clientChannel, portContext.getDefaultServer());
         clientKey.attach(handler); // Attach handler to the key
 
         // Track connection activity
@@ -132,16 +136,10 @@ public class EventLoop {
         connectionActivity.put(channel, System.currentTimeMillis());
 
         try {
-            // Read data from the channel
-            boolean requestComplete = handler.read();
+            boolean requestComplete = handler.read(handler.getServer());
 
-            if (handler.hasPendingResponse()) {
-                key.interestOps(SelectionKey.OP_WRITE);
-            } else if (requestComplete) {
-                // Process the request
+            if (requestComplete) {
                 handler.dispatchRequest();
-
-                // Change interest to write so selector will notify when writable
                 key.interestOps(SelectionKey.OP_WRITE);
             }
         } catch (IOException e) {
@@ -158,7 +156,7 @@ public class EventLoop {
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
         if (handler != null) {
             // Clean up any temporary files
-            handler.cleanupTempFile();
+            // handler.cleanupTempFile();
 
             try {
                 handler.close();
@@ -190,13 +188,11 @@ public class EventLoop {
         try {
             boolean finished = handler.write();
             if (finished) {
-                handler.close();
-                connectionActivity.remove(channel);
+                closeConnection(key);
             }
         } catch (IOException e) {
             try {
-                handler.close();
-                connectionActivity.remove(channel);
+                closeConnection(key);
             } catch (Exception ignore) {
             }
         }

@@ -2,9 +2,14 @@ package server;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 
 import config.model.WebServerConfig.ServerBlock;
@@ -18,213 +23,311 @@ import session.SessionManager;
 import util.SonicLogger;
 
 public class ConnectionHandler {
+
     private static final SonicLogger logger = SonicLogger.getLogger(ConnectionHandler.class);
 
-    private final ErrorHandler errorHandler;
     private final SocketChannel channel;
-    private final Router router;
-    private final Server.PortContext portContext;
-    private ServerPortSelection serverSelection;
-    
-    private final RequestReader requestReader;
-    private final ResponseWriter responseWriter;
-    private final FileUploadHandler fileUploadHandler;
+    private final Router router = new Router();
+    private final ErrorHandler errorHandler = new ErrorHandler();
+    private final ServerBlock server;
+
+    private ByteBuffer readBuffer = ByteBuffer.allocate(8192);
+    private ByteBuffer writeBuffer;
+
+    private ByteArrayOutputStream rawBytes = new ByteArrayOutputStream();
+    private boolean headersParsed = false;
+    private boolean isChunked = false;
+    private boolean requestComplete = false;
+    private int headerEndIndex = -1;
+    private long expectedContentLength = 0;
+
+    /* ===== Upload ===== */
+    private boolean isFileUpload = false;
+    private File tempFile;
+    private FileOutputStream tempOut;
+    private String boundary;
+    private byte[] boundaryBytes;
+    private byte[] boundaryCarry = new byte[0];
+    private boolean multipartHeadersSkipped = false;
+    private boolean fileComplete = false;
+    private long bytesWritten = 0;
 
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
-    private boolean isFileUpload = false;
-    private boolean pendingResponse = false;
 
-    public ConnectionHandler(SocketChannel channel, Server.PortContext portContext) {
+    public ConnectionHandler(SocketChannel channel, ServerBlock server) {
         this.channel = channel;
-        this.portContext = portContext;
-        this.serverSelection = new ServerPortSelection(portContext);
-        this.router = new Router();
-        this.errorHandler = new ErrorHandler();
-        this.requestReader = new RequestReader(channel);
-        this.responseWriter = new ResponseWriter(channel);
-        this.fileUploadHandler = new FileUploadHandler();
+        this.server = server;
     }
 
-    public boolean read() throws IOException {
-        RequestReader.ReadResult result = requestReader.read(serverSelection.activeServer);
+    /* ================= READ ================= */
+    public ServerBlock getServer() {
+        return server;
+    }
 
-        if (result.status == RequestReader.ReadResult.Status.CONNECTION_CLOSED) {
-            this.close();
+    public boolean read(ServerBlock server) throws IOException {
+        int n = channel.read(readBuffer);
+        if (n == -1) {
+            close();
             return false;
         }
 
-        if (result.status == RequestReader.ReadResult.Status.PAYLOAD_TOO_LARGE) {
-            handlePayloadTooLarge();
-            return false;
-        }
+        readBuffer.flip();
+        byte[] data = new byte[readBuffer.remaining()];
+        readBuffer.get(data);
+        readBuffer.clear();
 
-        if (result.isChunked) {
-            return handleChunkedRequest(result);
-        }
+        rawBytes.write(data);
 
-        if (isMultipartFormData(result.data)) {
-            return handleFileUpload(result);
-        }
+        if (!headersParsed) {
+            String tmp = rawBytes.toString(StandardCharsets.ISO_8859_1);
+            int idx = tmp.indexOf("\r\n\r\n");
+            if (idx != -1) {
+                headersParsed = true;
+                headerEndIndex = idx;
 
-        return result.complete;
-    }
+                for (String line : tmp.substring(0, idx).split("\r\n")) {
+                    String l = line.toLowerCase();
+                    if (l.startsWith("content-length:")) {
+                        expectedContentLength = Long.parseLong(line.split(":")[1].trim());
+                    }
+                    if (l.startsWith("transfer-encoding:") && l.contains("chunked")) {
+                         isChunked = true;
+                    }
+                }
 
-    private void handlePayloadTooLarge() throws IOException {
-        fileUploadHandler.cleanup();
-        httpResponse = errorHandler.handle(serverSelection.activeServer, HttpStatus.PAYLOAD_TOO_LARGE);
-        responseWriter.prepare(httpResponse);
-        pendingResponse = true;
-    }
+                if (tmp.toLowerCase().contains("multipart/form-data")) {
+                    isFileUpload = true;
+                    boundary = extractBoundary(tmp);
+                    boundaryBytes = ("\r\n--" + boundary).getBytes();
+                    prepareTempFile();
 
-    private boolean handleFileUpload(RequestReader.ReadResult result) throws IOException {
-        if (!isFileUpload) {
-            isFileUpload = true;
-            String boundary = extractBoundary(new String(result.data));
-            fileUploadHandler.initialize(boundary);
-
-            byte[] bodyData = Arrays.copyOfRange(result.data, result.headerEndIndex + 4, result.data.length);
-            if (bodyData.length > 0 && !result.isChunked) {
-                fileUploadHandler.processData(bodyData);
+                    byte[] body = Arrays.copyOfRange(rawBytes.toByteArray(), idx + 4, rawBytes.size());
+                    if (body.length > 0 && !isChunked) {
+                        processFileData(body);
+                    }
+                }
             }
-        }
-
-        return fileUploadHandler.isComplete();
-    }
-
-    private boolean handleChunkedRequest(RequestReader.ReadResult result) throws IOException {
-        ChunkedTransferDecoder.DecodeResult chunkResult = 
-            ChunkedTransferDecoder.decode(result.data, result.headerEndIndex);
-
-        if (!chunkResult.complete) {
             return false;
         }
 
-        if (chunkResult.body.length > serverSelection.activeServer.getClientMaxBodyBytes()) {
-            handlePayloadTooLarge();
-            return false;
+        // if (isChunked) {
+        //     ChunkResult res = decodeChunked(rawBytes.toByteArray(), headerEndIndex);
+        //     if (!res.complete) {
+        //         return false;
+        //     }
+
+        //     rawBytes.reset();
+        //     rawBytes.write(normalizeHeaders(res.body.length).getBytes(StandardCharsets.ISO_8859_1));
+        //     rawBytes.write(res.body);
+
+        //     if (isFileUpload) {
+        //         System.out.println("(1111)");
+        //         processFileData(res.body);
+        //     }
+        //     requestComplete = !isFileUpload || fileComplete;
+        //     return requestComplete;
+        // }
+
+        if (isFileUpload) { 
+
+            processFileData(data);
+            requestComplete = fileComplete;
+            // System.err.println("-   -  "+requestComplete);
+        } else {
+            requestComplete = rawBytes.size() >= headerEndIndex + 4 + expectedContentLength;
         }
 
-        // Initialize multipart upload state for chunked uploads
-        if (!isFileUpload && isMultipartFormData(result.data)) {
-            isFileUpload = true;
-            String boundary = extractBoundary(new String(result.data, 0, result.headerEndIndex, StandardCharsets.ISO_8859_1));
-            fileUploadHandler.initialize(boundary);
-        }
-
-        if (isFileUpload && !fileUploadHandler.isComplete()) {
-            fileUploadHandler.processData(chunkResult.body);
-        }
-
-        normalizeChunkedRawRequest(result, chunkResult.body);
-        return isFileUpload ? fileUploadHandler.isComplete() : true;
+        return requestComplete;
     }
 
-    private void normalizeChunkedRawRequest(RequestReader.ReadResult result, byte[] decodedBody) throws IOException {
-        String headers = new String(result.data, 0, result.headerEndIndex, StandardCharsets.ISO_8859_1);
-        String normalizedHeaders = ChunkedTransferDecoder.normalizeHeaders(headers, decodedBody.length);
+    /* ================= FILE UPLOAD ================= */
+    private void prepareTempFile() throws IOException {
+        tempFile = File.createTempFile("upload_", ".tmp");
+        tempOut = new FileOutputStream(tempFile);
+    }
 
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        out.write(normalizedHeaders.getBytes(StandardCharsets.ISO_8859_1));
-        out.write(decodedBody);
-        requestReader.replaceRawBytes(out.toByteArray());
+    private void processFileData(byte[] data) throws IOException {
+        if (fileComplete || tempOut == null) {
+            return;
+        }
+
+        byte[] combined = new byte[boundaryCarry.length + data.length];
+        // System.out.println(".(00000)"+Arrays.toString(combined));
+        System.arraycopy(boundaryCarry, 0, combined, 0, boundaryCarry.length);
+        System.arraycopy(data, 0, combined, boundaryCarry.length, data.length);
+
+        int start = 0;
+
+        if (!multipartHeadersSkipped) {
+            int h = indexOf(combined, "\r\n\r\n".getBytes());
+            if (h == -1) {
+                boundaryCarry = combined;
+                return;
+            }
+            start = h + 4;
+            multipartHeadersSkipped = true;
+        }
+        int boundaryPos = indexOf(combined, boundaryBytes);
+        int end = boundaryPos == -1 ? combined.length : boundaryPos;
+
+        if (end > start) {
+            tempOut.write(combined, start, end - start);
+            bytesWritten += (end - start);
+        }
+
+        if (boundaryPos != -1) {
+            fileComplete = true;
+            tempOut.close();
+            return;
+        }
+
+        int carry = Math.min(boundaryBytes.length, combined.length);
+        boundaryCarry = Arrays.copyOfRange(combined, combined.length - carry, combined.length);
+    }
+
+    /* ================= DISPATCH ================= */
+    public void dispatchRequest() {
+        try {
+            httpRequest = ParseRequest.processRequest(rawBytes.toByteArray());
+            httpRequest.setConnectionHandler(this);
+            SessionManager.getInstance().attachSession(httpRequest);
+            httpResponse = router.routeRequest(httpRequest, server);
+            SessionManager.getInstance().appendSessionCookie(httpRequest, httpResponse);
+            prepareResponse();
+        } catch (Exception e) {
+            logger.error("Request error", e);
+            httpResponse = errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
+            prepareResponse();
+        }
+    }
+
+    /* ================= WRITE ================= */
+    public boolean write() throws IOException {
+        channel.write(writeBuffer);
+        if (!writeBuffer.hasRemaining()) {
+            reset();
+            return true;
+        }
+        return false;
+    }
+
+    private void prepareResponse() {
+        byte[] body = httpResponse.getBody() == null ? new byte[0] : httpResponse.getBody();
+        httpResponse.getHeaders().put("Content-Length", String.valueOf(body.length));
+        httpResponse.getHeaders().put("Date",
+                DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
+        StringBuilder sb = new StringBuilder();
+        sb.append("HTTP/1.1 ")
+                .append(httpResponse.getStatusCode())
+                .append(" ")
+                .append(httpResponse.getStatusMessage())
+                .append("\r\n");
+
+        httpResponse.getHeaders().forEach((k, v) -> sb.append(k).append(": ").append(v).append("\r\n"));
+        sb.append("\r\n");
+
+        byte[] headers = sb.toString().getBytes(StandardCharsets.ISO_8859_1);
+        writeBuffer = ByteBuffer.allocate(headers.length + body.length);
+        writeBuffer.put(headers).put(body).flip();
+    }
+
+    private void reset() {
+        rawBytes.reset();
+        headersParsed = false;
+        isChunked = false;
+        isFileUpload = false;
+        multipartHeadersSkipped = false;
+        fileComplete = false;
+        bytesWritten = 0;
+        boundaryCarry = new byte[0];
+        writeBuffer = null;
     }
 
     public File getUploadedFile() {
-        return isFileUpload ? fileUploadHandler.getUploadedFile() : null;
-    }
-
-    public void cleanupTempFile() {
-        fileUploadHandler.cleanup();
+        return tempFile;
     }
 
     public boolean isFileUpload() {
         return isFileUpload;
     }
 
-    private boolean isMultipartFormData(byte[] data) {
-        if (data == null) return false;
-        String tmp = new String(data);
-        return tmp.toLowerCase().contains("content-type: multipart/form-data");
+    public void close() throws IOException {
+        channel.close();
     }
 
-    private String extractBoundary(String headerString) {
-        String[] lines = headerString.split("\r\n");
-        for (String line : lines) {
-            if (line.toLowerCase().startsWith("content-type: multipart/form-data")) {
-                int boundaryIndex = line.indexOf("boundary=");
-                if (boundaryIndex != -1) {
-                    return line.substring(boundaryIndex + 9);
-                }
+    /* ================= HELPERS ================= */
+    private String extractBoundary(String headers) {
+        for (String l : headers.split("\r\n")) {
+            if (l.toLowerCase().contains("boundary=")) {
+                return l.substring(l.indexOf("boundary=") + 9);
             }
         }
         return null;
     }
 
-    public void dispatchRequest() {
-        try {
-            httpRequest = ParseRequest.processRequest(requestReader.getRawBytes());
-            httpRequest.setConnectionHandler(this);
-            serverSelection.selectForHost(httpRequest.getHeader("Host"));
-            if (serverSelection.activeServer == null && portContext != null) {
-                serverSelection.activeServer = portContext.getDefaultServer();
+    private int indexOf(byte[] data, byte[] pattern) {
+        outer:
+        for (int i = 0; i <= data.length - pattern.length; i++) {
+            for (int j = 0; j < pattern.length; j++) {
+                if (data[i + j] != pattern[j]) {
+                    continue outer;
+                }
             }
-            SessionManager.getInstance().attachSession(httpRequest);
-            httpResponse = router.routeRequest(httpRequest, serverSelection.activeServer);
-            SessionManager.getInstance().appendSessionCookie(httpRequest, httpResponse);
-        } catch (Exception ex) {
-            logger.error("Error processing request", ex);
-            httpResponse = errorHandler.handle(serverSelection.activeServer, HttpStatus.INTERNAL_SERVER_ERROR);
+            return i;
         }
-        responseWriter.prepare(httpResponse);
+        return -1;
     }
 
-    public boolean write() throws IOException {
-        boolean complete = responseWriter.write();
-        if (complete) {
-            resetForNextRequest();
-        }
-        return complete;
+    private String normalizeHeaders(long len) {
+        return rawBytes.toString(StandardCharsets.ISO_8859_1)
+                .replaceAll("(?i)transfer-encoding:.*\r\n", "")
+                .replaceAll("(?i)content-length:.*\r\n", "")
+                + "Content-Length: " + len + "\r\n\r\n";
     }
 
-    public void close() throws IOException {
-        EventLoop.removeTracking(channel);
-        channel.close();
-    }
+    private ChunkResult decodeChunked(byte[] data, int headerEnd) {
+        int i = headerEnd + 4;
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-    private void resetForNextRequest() {
-        requestReader.reset();
-        responseWriter.reset();
-        fileUploadHandler.reset();
-        isFileUpload = false;
-        httpRequest = null;
-        httpResponse = null;
-        pendingResponse = false;
-    }
-
-    private static class ServerPortSelection {
-        private final Server.PortContext portContext;
-        private ServerBlock activeServer;
-
-        ServerPortSelection(Server.PortContext portContext) {
-            this.portContext = portContext;
-            this.activeServer = portContext.getDefaultServer();
-        }
-
-        void selectForHost(String hostHeader) {
-            if (portContext == null) {
-                return;
+        while (true) {
+            int crlf = indexOf(Arrays.copyOfRange(data, i, data.length), "\r\n".getBytes());
+            if (crlf == -1) {
+                return ChunkResult.incomplete();
             }
-            ServerBlock selected = portContext.selectServer(hostHeader);
-            if (selected != null) {
-                activeServer = selected;
-            } else {
-                activeServer = portContext.getDefaultServer();
+
+            int size = Integer.parseInt(new String(data, i, crlf,
+                StandardCharsets.ISO_8859_1).trim(), 16);
+            i += crlf + 2;
+
+            if (size == 0) {
+                return ChunkResult.complete(out.toByteArray());
             }
+            if (i + size > data.length) {
+                return ChunkResult.incomplete();
+            }
+
+            out.write(data, i, size);
+            i += size + 2;
         }
     }
 
-    public boolean hasPendingResponse() {
-        return pendingResponse;
+    private static class ChunkResult {
+
+        boolean complete;
+        byte[] body;
+
+        static ChunkResult complete(byte[] b) {
+            return new ChunkResult(true, b);
+        }
+
+        static ChunkResult incomplete() {
+            return new ChunkResult(false, null);
+        }
+
+        private ChunkResult(boolean c, byte[] b) {
+            complete = c;
+            body = b;
+        }
     }
 }

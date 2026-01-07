@@ -8,10 +8,11 @@ import java.nio.channels.SocketChannel;
 import config.model.WebServerConfig.ServerBlock;
 
 public class RequestReader {
+
     private final SocketChannel channel;
     private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
     private final ByteArrayOutputStream rawBytes = new ByteArrayOutputStream();
-    
+
     private boolean headersParsed = false;
     private int headerEndIndex = -1;
     private long expectedContentLength = 0;
@@ -24,7 +25,7 @@ public class RequestReader {
 
     public ReadResult read(ServerBlock server) throws IOException {
         int bytesRead = channel.read(readBuffer);
-        
+
         if (bytesRead == -1) {
             return ReadResult.connectionClosed();
         }
@@ -52,7 +53,7 @@ public class RequestReader {
     private void parseHeaders() {
         String temp = new String(rawBytes.toByteArray());
         int idx = temp.indexOf("\r\n\r\n");
-        
+
         if (idx != -1) {
             headersParsed = true;
             headerEndIndex = idx;
@@ -63,14 +64,29 @@ public class RequestReader {
                     expectedContentLength = Long.parseLong(line.split(":")[1].trim());
                 } else if (lower.startsWith("transfer-encoding:") && lower.contains("chunked")) {
                     isChunked = true;
+                    expectedContentLength = 0;
                 }
             }
         }
+
+    }
+
+    private boolean isMulltipartForm() {
+        if (rawBytes == null) {
+            return false;
+        }
+        String tmp = new String(rawBytes.toByteArray());
+        return tmp.toLowerCase().contains("content-type: multipart/form-data");
     }
 
     private boolean isRequestComplete() {
-        if (!headersParsed) return false;
-        if (isChunked) return false; // Chunked requests handled separately
+        if (!headersParsed) {
+            return false;
+        }
+        if (isChunked) {
+            return false; // Chunked requests handled separately
+
+        }
         return expectedContentLength == 0 || rawBytes.size() >= headerEndIndex + 4 + expectedContentLength;
     }
 
@@ -94,13 +110,16 @@ public class RequestReader {
     }
 
     public static class ReadResult {
+
         public final byte[] data;
         public final boolean complete;
         public final boolean isChunked;
         public final int headerEndIndex;
         public final Status status;
 
-        public enum Status { SUCCESS, CONNECTION_CLOSED, PAYLOAD_TOO_LARGE }
+        public enum Status {
+            SUCCESS, CONNECTION_CLOSED, PAYLOAD_TOO_LARGE
+        }
 
         private ReadResult(byte[] data, boolean complete, boolean isChunked, int headerEndIndex, Status status) {
             this.data = data;
