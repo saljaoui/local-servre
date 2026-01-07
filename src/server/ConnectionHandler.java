@@ -281,10 +281,10 @@ public class ConnectionHandler {
         }
 
         // Log progress for large uploads
-        if (bytesWrittenToFile % (1024 * 1024) == 0) { // Every 1MB
-            System.out.println("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB of "
-                    + (expectedContentLength / 1024 / 1024) + "MB");
-        }
+        // if (bytesWrittenToFile % (1024 * 1024) == 0) { // Every 1MB
+        //     System.out.println("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB of "
+        //             + (expectedContentLength / 1024 / 1024) + "MB");
+        // }
     }
 
     // Helper method to find boundary in byte array

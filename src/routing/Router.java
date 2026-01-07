@@ -39,8 +39,9 @@ public class Router {
         }
 
         var method = request.getMethod(); 
-       
+        // System.out.println("Router.routeRequest()"+server.getRoutes()+ " " + request.getMethod());
         if (!route.isMethodAllowed(method)) { 
+            System.err.println("her 0");
             return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
 
@@ -61,6 +62,7 @@ public class Router {
         }
 
         // Handle DELETE requests
+        // System.out.println("Router.routeRequest()"+method);
         if ("DELETE".equalsIgnoreCase(method)) {
             return deleteHandler.handle(request, route, server);
         }

@@ -23,11 +23,11 @@ public class StaticHandler {
             return errorHandler.handle(server, HttpStatus.FORBIDDEN);
         }
         
-        switch (request.getMethod()) {
-            case "GET":    return handleGet(filePath, request, route, server);
-            case "POST":   return handlePost(filePath, request, route, server);
-            default:       return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
-        }
+        return switch (request.getMethod()) {
+            case "GET" -> handleGet(filePath, request, route, server);
+            case "POST" -> handlePost(filePath, request, route, server);
+            default -> errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
+        };
     }
 
     private HttpResponse handleGet(Path filePath, HttpRequest request, Route route, ServerBlock server) {
