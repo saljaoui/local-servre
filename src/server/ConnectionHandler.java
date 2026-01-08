@@ -1,5 +1,11 @@
 package server;
 
+import config.model.WebServerConfig.ServerBlock;
+import handlers.ErrorHandler;
+import http.ParseRequest;
+import http.model.HttpRequest;
+import http.model.HttpResponse;
+import http.model.HttpStatus;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -10,24 +16,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-
-import config.model.WebServerConfig.ServerBlock;
-import handlers.ErrorHandler;
-import http.ParseRequest;
-import http.model.HttpRequest;
-import http.model.HttpResponse;
-import http.model.HttpStatus;
 import routing.Router;
 import session.SessionManager;
 import util.SonicLogger;
 
 /**
- * ConnectionHandler processes HTTP requests in stages:
- * 1. Read and validate headers (max 16KB)
- * 2. Validate request method and Content-Length
- * 3. Read body (memory or file based on size)
- * 4. Parse and dispatch request
- * 5. Send response
+ * ConnectionHandler processes HTTP requests in stages: 1. Read and validate
+ * headers (max 16KB) 2. Validate request method and Content-Length 3. Read body
+ * (memory or file based on size) 4. Parse and dispatch request 5. Send response
  */
 public class ConnectionHandler {
 
@@ -98,7 +94,7 @@ public class ConnectionHandler {
             this.close();
             return false;
         }
-
+        // System.out.println("ConnectionHandler.read() **  **  "+bytesRead+ "  *   *  "+ totalBytesRead);
         totalBytesRead += bytesRead;
 
         // Check total size limit early
@@ -113,26 +109,26 @@ public class ConnectionHandler {
         readBuffer.clear();
 
         // Process data based on current state
+        // System.err.println(state+"  *   *  * ");
         try {
-            switch (state) {
-                case READING_HEADERS:
-                    return processHeaders(data, server);
-                case READING_BODY_TO_MEMORY:
-                    return processBodyToMemory(data, server);
-                case READING_BODY_TO_FILE:
-                    return processBodyToFile(data, server);
-                case REQUEST_COMPLETE:
-                    return true;
-                case ERROR:
-                    return false;
-            }
+            return switch (state) {
+                case READING_HEADERS ->
+                    processHeaders(data, server);
+                case READING_BODY_TO_MEMORY ->
+                    processBodyToMemory(data, server);
+                case READING_BODY_TO_FILE ->
+                    processBodyToFile(data, server);
+                case REQUEST_COMPLETE ->
+                    true;
+                case ERROR ->
+                    false;
+            };
         } catch (Exception e) {
             logger.error("Error processing request", e);
             handleError(HttpStatus.BAD_REQUEST);
             return false;
         }
 
-        return false;
     }
 
     /**
@@ -147,7 +143,7 @@ public class ConnectionHandler {
             return false;
         }
 
-        // Find header end marker in bytes (no string conversion yet)
+        // Find header end marker in bytes
         byte[] headerData = headerBuffer.toByteArray();
         int headerEnd = findHeaderEnd(headerData);
 
@@ -164,7 +160,7 @@ public class ConnectionHandler {
     /**
      * STEP 3: Validate headers (method, Content-Length, Transfer-Encoding)
      */
-    private boolean validateAndProcessHeaders(byte[] headerData, int headerEnd, ServerBlock server) 
+    private boolean validateAndProcessHeaders(byte[] headerData, int headerEnd, ServerBlock server)
             throws IOException {
         // Convert only headers to string
         String headersString = new String(headerData, 0, headerEnd, StandardCharsets.ISO_8859_1);
@@ -187,40 +183,44 @@ public class ConnectionHandler {
         // Parse headers
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i];
-            if (line.isEmpty()) continue;
+            if (line.isEmpty()) {
+                continue;
+            }
 
             int colonIdx = line.indexOf(':');
-            if (colonIdx <= 0) continue;
-
+            if (colonIdx <= 0) {
+                continue;
+            }
+            // header 
             String name = line.substring(0, colonIdx).trim().toLowerCase();
             String value = line.substring(colonIdx + 1).trim();
-
+            // System.err.println("*-  "+ name+ " *  "+ value );
             switch (name) {
-                case "content-length":
+                case "content-length" -> {
                     try {
                         contentLength = Long.parseLong(value);
                     } catch (NumberFormatException e) {
                         handleError(HttpStatus.BAD_REQUEST);
                         return false;
                     }
-                    break;
-                case "transfer-encoding":
+                }
+                case "transfer-encoding" -> {
                     if (value.toLowerCase().contains("chunked")) {
                         isChunked = true;
                     }
-                    break;
-                case "content-type":
+                }
+                case "content-type" -> {
                     if (value.toLowerCase().contains("multipart/form-data")) {
                         isMultipart = true;
                         boundary = extractBoundary(value);
                     }
-                    break;
+                }
             }
         }
 
         // STEP 4: Validate request requirements
-        if ("POST".equals(requestMethod) || "PUT".equals(requestMethod)) {
-            // POST/PUT must have Content-Length or Transfer-Encoding: chunked
+        if ("POST".equals(requestMethod)) {
+            // POST must have Content-Length or Transfer-Encoding: chunked
             if (contentLength == 0 && !isChunked) {
                 handleError(HttpStatus.LENGTH_REQUIRED);
                 return false;
@@ -241,6 +241,7 @@ public class ConnectionHandler {
 
         // STEP 5: Check if there's body data after headers
         int bodyStart = headerEnd + 4; // Skip \r\n\r\n
+        // System.out.println("ConnectionHandler.validateAndProcessHeaders()"+bodyStart);
         byte[] initialBodyData = null;
         if (bodyStart < headerData.length) {
             int initialBodyLength = headerData.length - bodyStart;
@@ -340,22 +341,23 @@ public class ConnectionHandler {
         // If body is in file, we need to modify Content-Length header to 0
         // so ParseRequest doesn't expect the body in the byte array
         if (tempBodyFile != null && tempBodyFile.exists()) {
+            System.err.println("here ** " + tempBodyFile);
             String headersString = new String(headerData, 0, headerEnd, StandardCharsets.ISO_8859_1);
-            
+
             // Replace Content-Length with 0
             String modifiedHeaders = headersString.replaceFirst(
-                "(?i)Content-Length:\\s*\\d+",
-                "Content-Length: 0"
+                    "(?i)Content-Length:\\s*\\d+",
+                    "Content-Length: 0"
             );
-            
+
             // Rebuild header bytes
             byte[] modifiedHeaderBytes = modifiedHeaders.getBytes(StandardCharsets.ISO_8859_1);
-            
+
             // Build complete request with modified headers
             ByteArrayOutputStream completeRequest = new ByteArrayOutputStream();
             completeRequest.write(modifiedHeaderBytes);
             completeRequest.write("\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1));
-            
+
             headerBuffer = new ByteArrayOutputStream();
             headerBuffer.write(completeRequest.toByteArray());
         } else {
@@ -417,11 +419,10 @@ public class ConnectionHandler {
     }
 
     // ==================== Helper Methods ====================
-
     private int findHeaderEnd(byte[] data) {
         for (int i = 0; i < data.length - 3; i++) {
-            if (data[i] == '\r' && data[i + 1] == '\n' &&
-                data[i + 2] == '\r' && data[i + 3] == '\n') {
+            if (data[i] == '\r' && data[i + 1] == '\n'
+                    && data[i + 2] == '\r' && data[i + 3] == '\n') {
                 return i;
             }
         }
@@ -457,7 +458,8 @@ public class ConnectionHandler {
         } finally {
             try {
                 this.close();
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
         }
         state = ProcessingState.ERROR;
     }
@@ -479,9 +481,9 @@ public class ConnectionHandler {
 
         StringBuilder sb = new StringBuilder();
         sb.append("HTTP/1.1 ").append(httpResponse.getStatusCode()).append(" ")
-          .append(reason).append("\r\n");
-        httpResponse.getHeaders().forEach((k, v) -> 
-            sb.append(k).append(": ").append(v).append("\r\n"));
+                .append(reason).append("\r\n");
+        httpResponse.getHeaders().forEach((k, v)
+                -> sb.append(k).append(": ").append(v).append("\r\n"));
         sb.append("\r\n");
 
         byte[] headers = sb.toString().getBytes();
@@ -493,13 +495,13 @@ public class ConnectionHandler {
         if (bodyFileStream != null) {
             try {
                 bodyFileStream.close();
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
             bodyFileStream = null;
         }
 
         // Don't delete temp file here - it may be needed by UploadHandler
         // The handler will manage the file lifecycle
-
         if (bodyBuffer != null) {
             bodyBuffer = new ByteArrayOutputStream();
         }

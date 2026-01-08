@@ -6,6 +6,7 @@ import http.model.HttpResponse;
 import http.model.HttpStatus;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import routing.model.Route;
 import util.SonicLogger;
@@ -18,29 +19,33 @@ public class StaticHandler {
     public HttpResponse handle(HttpRequest request, ServerBlock server, Route route) {
         String rootFolder = (route.getRoot() != null) ? route.getRoot() : server.getRoot();
         Path filePath = resolveFilePath(rootFolder, request.getPath(), route);
-        
+
         if (filePath == null) {
+            // System.out.println("StaticHandler.handle()"+filePath);
             return errorHandler.handle(server, HttpStatus.FORBIDDEN);
         }
-        
+        // System.out.println("StaticHandler.handle()"+request.getMethod());
         return switch (request.getMethod()) {
-            case "GET" -> handleGet(filePath, request, route, server);
-            case "POST" -> handlePost(filePath, request, route, server);
-            default -> errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
+            case "GET" ->
+                handleGet(filePath, request, route, server);
+            case "POST" ->
+                handlePost(filePath, request, route, server);
+            default ->
+                errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         };
     }
 
     private HttpResponse handleGet(Path filePath, HttpRequest request, Route route, ServerBlock server) {
         File file = filePath.toFile();
-        
+        System.err.println("her " + filePath);
         if (!file.exists()) {
             return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
-        
+
         if (file.isDirectory()) {
             return handleDirectory(file, request.getPath(), route, server);
         }
-        
+
         return serveFile(file, server);
     }
 
@@ -52,15 +57,14 @@ public class StaticHandler {
             response.addHeader("Content-Type", "text/html; charset=UTF-8");
             return response;
         }
-        
-        String indexFileName = (route.getIndex() != null && !route.getIndex().isEmpty()) 
-            ? route.getIndex() : "index.html";
-        
+
+        String indexFileName = (route.getIndex() != null && !route.getIndex().isEmpty())
+                ? route.getIndex() : "index.html";
+
         File indexFile = new File(directory, indexFileName);
         if (indexFile.exists() && indexFile.isFile()) {
             return serveFile(indexFile, server);
         }
-        
         return errorHandler.handle(server, HttpStatus.FORBIDDEN);
     }
 
@@ -80,21 +84,31 @@ public class StaticHandler {
     }
 
     private HttpResponse handlePost(Path filePath, HttpRequest request, Route route, ServerBlock server) {
+        System.err.println("here2 " + filePath);
+
+        HttpResponse response = new HttpResponse();
+        if (route.getPath().equals("/") && request.getMethod().equals("POST")) {
+            String body = new String(request.getBody(), StandardCharsets.UTF_8);
+            response.setStatus(HttpStatus.CREATED);
+            response.setBody(("Content: " + body).getBytes(StandardCharsets.UTF_8));
+            response.addHeader("Content-Type", "text/plain; charset=UTF-8");
+            return response;
+        }
         if (!route.isUploadEnabled()) {
             return errorHandler.handle(server, HttpStatus.FORBIDDEN);
         }
-        
-        HttpResponse response = new HttpResponse();
         try {
             byte[] body = request.getBody();
-            if (body == null) body = new byte[0];
-            
+            if (body == null) {
+                body = new byte[0];
+            }
+
             if (body.length > server.getClientMaxBodyBytes()) {
                 return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
             }
-            
+
             Files.write(filePath, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            
+
             response.setStatus(HttpStatus.CREATED);
             response.setBody(("File uploaded: " + filePath.getFileName()).getBytes());
             response.addHeader("Content-Type", "text/plain");
@@ -111,19 +125,19 @@ public class StaticHandler {
             if (relativePath.startsWith(route.getPath())) {
                 relativePath = relativePath.substring(route.getPath().length());
             }
-            
+
             if (relativePath.isEmpty() || relativePath.equals("/")) {
                 relativePath = "/";
             }
-            
+
             Path fullPath = Paths.get(root, relativePath).normalize();
             Path rootPath = Paths.get(root).normalize();
-            
+
             if (!fullPath.startsWith(rootPath)) {
                 logger.warn("Path traversal blocked: " + requestPath);
                 return null;
             }
-            
+
             return fullPath;
         } catch (Exception e) {
             logger.error("Error resolving path: " + requestPath, e);
@@ -133,7 +147,7 @@ public class StaticHandler {
 
     private String generateDirectoryListing(File directory, String requestPath) {
         StringBuilder html = new StringBuilder();
-        
+
         html.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\">");
         html.append("<title>Index of ").append(requestPath).append("</title>");
         html.append("<style>");
@@ -146,28 +160,28 @@ public class StaticHandler {
         html.append("a:hover{text-decoration:underline}");
         html.append("</style></head><body>");
         html.append("<h1>📁 Index of ").append(requestPath).append("</h1><ul>");
-        
+
         if (!requestPath.equals("/")) {
             html.append("<li><a href=\"..\">⬆️ Parent Directory</a></li>");
         }
-        
+
         File[] files = directory.listFiles();
         if (files != null) {
             for (File file : files) {
                 String name = file.getName();
                 String icon = file.isDirectory() ? "📁 " : "📄 ";
                 String href = requestPath.endsWith("/") ? requestPath + name : requestPath + "/" + name;
-                
+
                 if (file.isDirectory()) {
                     name += "/";
                     href += "/";
                 }
-                
+
                 html.append("<li><a href=\"").append(href).append("\">")
-                    .append(icon).append(name).append("</a></li>");
+                        .append(icon).append(name).append("</a></li>");
             }
         }
-        
+
         html.append("</ul></body></html>");
         return html.toString();
     }

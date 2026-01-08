@@ -14,6 +14,7 @@ import routing.model.Route;
 import util.SonicLogger;
 
 public class Router {
+
     private static final SonicLogger logger = SonicLogger.getLogger(Router.class);
 
     private final StaticHandler staticHandler;
@@ -38,13 +39,17 @@ public class Router {
             return errorHandler.handle(server, HttpStatus.NOT_FOUND);
         }
 
-        var method = request.getMethod(); 
+        var method = request.getMethod();
         // System.out.println("Router.routeRequest()"+server.getRoutes()+ " " + request.getMethod());
-        if (!route.isMethodAllowed(method)) { 
-            System.err.println("her 0");
+        if (!route.isMethodAllowed(method)) {
+            // System.err.println("her 0");
             return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
-
+        if (request.getMethod().equals("POST") && route.getPath().equals("/")) {
+            // System.out.println("Resved");
+            return staticHandler.handle(request, server, route);
+            // return new HttpResponse(HttpStatus.OK, "POST received".getBytes());
+        }
         // Handle redirects first
         if (route.isRedirect()) {
             return redirectHandler.handle(route);
@@ -66,7 +71,7 @@ public class Router {
         if ("DELETE".equalsIgnoreCase(method)) {
             return deleteHandler.handle(request, route, server);
         }
- 
+
         return staticHandler.handle(request, server, route);
     }
 

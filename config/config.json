@@ -22,7 +22,7 @@
       "routes": [
         {
           "path": "/",
-          "methods": ["GET"],
+          "methods": ["GET","POST"],
           "root": "./www/main",
           "index": "index.html",
           "autoIndex": true
