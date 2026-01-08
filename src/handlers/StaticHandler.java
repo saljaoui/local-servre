@@ -29,7 +29,7 @@ public class StaticHandler {
             case "GET" ->
                 handleGet(filePath, request, route, server);
             case "POST" ->
-                handlePost(filePath, request, route, server);
+                handlePost(request, route);
             default ->
                 errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         };
@@ -83,8 +83,7 @@ public class StaticHandler {
         return response;
     }
 
-    private HttpResponse handlePost(Path filePath, HttpRequest request, Route route, ServerBlock server) {
-        System.err.println("here2 " + filePath);
+    private HttpResponse handlePost(HttpRequest request, Route route) {
 
         HttpResponse response = new HttpResponse();
         if (route.getPath().equals("/") && request.getMethod().equals("POST")) {
@@ -94,28 +93,27 @@ public class StaticHandler {
             response.addHeader("Content-Type", "text/plain; charset=UTF-8");
             return response;
         }
-        if (!route.isUploadEnabled()) {
-            return errorHandler.handle(server, HttpStatus.FORBIDDEN);
-        }
-        try {
-            byte[] body = request.getBody();
-            if (body == null) {
-                body = new byte[0];
-            }
+        // System.err.println("here "+route.isUploadEnabled());
+        // if (!route.isUploadEnabled()) {
+        //     return errorHandler.handle(server, HttpStatus.FORBIDDEN);
+        // }
+        // try +{
+        //     byte[] body = request.getBody();
+        //     if (body == null) {
+        //         body = new byte[0];
+        //     }
 
-            if (body.length > server.getClientMaxBodyBytes()) {
-                return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
-            }
-
-            Files.write(filePath, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-
-            response.setStatus(HttpStatus.CREATED);
-            response.setBody(("File uploaded: " + filePath.getFileName()).getBytes());
-            response.addHeader("Content-Type", "text/plain");
-        } catch (IOException e) {
-            logger.error("Error uploading file: " + filePath, e);
-            return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        //     if (body.length > server.getClientMaxBodyBytes()) {
+        //         return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
+        //     }
+        //     Files.write(filePath, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        //     response.setStatus(HttpStatus.CREATED);
+        //     response.setBody(("File uploaded: " + filePath.getFileName()).getBytes());
+        //     response.addHeader("Content-Type", "text/plain");
+        // } catch (IOException e) {
+        //     logger.error("Error uploading file: " + filePath, e);
+        //     return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
+        // }
         return response;
     }
 

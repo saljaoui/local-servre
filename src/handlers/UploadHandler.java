@@ -41,9 +41,7 @@ public class UploadHandler {
 
         // 4. Get Body (multipart upload saved to temp file or raw body)
         File uploadFile = request.getUploadedFile();
-        // if (uploadFile == null) {
-        //     return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
-        // }
+
         byte[] rawBody = request.getBody();
         boolean hasFile = uploadFile != null && uploadFile.exists();
         boolean hasRaw = rawBody != null && rawBody.length > 0;

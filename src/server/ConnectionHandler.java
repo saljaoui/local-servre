@@ -341,7 +341,6 @@ public class ConnectionHandler {
         // If body is in file, we need to modify Content-Length header to 0
         // so ParseRequest doesn't expect the body in the byte array
         if (tempBodyFile != null && tempBodyFile.exists()) {
-            System.err.println("here ** " + tempBodyFile);
             String headersString = new String(headerData, 0, headerEnd, StandardCharsets.ISO_8859_1);
 
             // Replace Content-Length with 0

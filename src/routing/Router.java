@@ -45,11 +45,11 @@ public class Router {
             // System.err.println("her 0");
             return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
-        if (request.getMethod().equals("POST") && route.getPath().equals("/")) {
-            // System.out.println("Resved");
-            return staticHandler.handle(request, server, route);
-            // return new HttpResponse(HttpStatus.OK, "POST received".getBytes());
-        }
+        // if (request.getMethod().equals("POST") && route.getPath().equals("/")) {
+        //     // System.out.println("Resved");
+        //     return staticHandler.handle(request, server, route);
+        //     // return new HttpResponse(HttpStatus.OK, "POST received".getBytes());
+        // }
         // Handle redirects first
         if (route.isRedirect()) {
             return redirectHandler.handle(route);
