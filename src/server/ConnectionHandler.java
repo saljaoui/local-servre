@@ -508,8 +508,6 @@ public class ConnectionHandler {
             bodyFileStream = null;
         }
 
-        // Don't delete temp file here - it may be needed by UploadHandler
-        // The handler will manage the file lifecycle
         if (bodyBuffer != null) {
             bodyBuffer = new ByteArrayOutputStream();
         }
