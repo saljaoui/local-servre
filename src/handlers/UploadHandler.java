@@ -57,9 +57,7 @@ public class UploadHandler {
             return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
-        String filename
-                = System.currentTimeMillis() + "_"
-                + java.util.UUID.randomUUID().toString().substring(0, 8);
+        String filename= System.currentTimeMillis() + "_" + java.util.UUID.randomUUID().toString().substring(0, 8);
         // 7. Create destination file
         File destinationFile = new File(uploadDirectory, filename);
 
