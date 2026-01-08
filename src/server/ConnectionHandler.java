@@ -1,15 +1,8 @@
 package server;
 
-import config.model.WebServerConfig.ServerBlock;
-import handlers.ErrorHandler;
-import http.ParseRequest;
-import http.model.HttpRequest;
-import http.model.HttpResponse;
-import http.model.HttpStatus;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
@@ -17,46 +10,70 @@ import java.nio.charset.StandardCharsets;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
+
+import config.model.WebServerConfig.ServerBlock;
+import handlers.ErrorHandler;
+import http.ParseRequest;
+import http.model.HttpRequest;
+import http.model.HttpResponse;
+import http.model.HttpStatus;
 import routing.Router;
 import session.SessionManager;
 import util.SonicLogger;
 
+/**
+ * ConnectionHandler processes HTTP requests in stages:
+ * 1. Read and validate headers (max 16KB)
+ * 2. Validate request method and Content-Length
+ * 3. Read body (memory or file based on size)
+ * 4. Parse and dispatch request
+ * 5. Send response
+ */
 public class ConnectionHandler {
 
     private static final SonicLogger logger = SonicLogger.getLogger(ConnectionHandler.class);
+    private static final int MAX_HEADER_SIZE = 16384; // 16KB
+    private static final int READ_BUFFER_SIZE = 8192;
+    private static final int MEMORY_THRESHOLD = 1024 * 1024; // 1MB
 
-    private final ErrorHandler errorHandler;
+    // Network
     private final SocketChannel channel;
-    private final ByteBuffer readBuffer = ByteBuffer.allocate(8192);
+    private final ByteBuffer readBuffer = ByteBuffer.allocate(READ_BUFFER_SIZE);
     private ByteBuffer writeBuffer;
+
+    // Configuration
+    private final ServerBlock server;
+    private final Router router;
+    private final ErrorHandler errorHandler;
+
+    // Request Processing State
+    private ProcessingState state = ProcessingState.READING_HEADERS;
+    private ByteArrayOutputStream headerBuffer = new ByteArrayOutputStream();
+    private ByteArrayOutputStream bodyBuffer = null;
+    private FileOutputStream bodyFileStream = null;
+    private File tempBodyFile = null;
+
+    // Parsed Request Info
+    private int headerEndIndex = -1;
+    private long contentLength = 0;
+    private long totalBytesRead = 0;
+    private long bodyBytesRead = 0;
+    private boolean isChunked = false;
+    private boolean isMultipart = false;
+    private String boundary = null;
+    private String requestMethod = null;
+
+    // Response
     private HttpRequest httpRequest;
     private HttpResponse httpResponse;
-    private final Router router;
-    private final ServerBlock server;
 
-    //
-    private ByteArrayOutputStream rawBytes;
-    private boolean isFileUpload = false;
-    private File tempFile;
-    private FileOutputStream tempFileOutputStream;
-    private long bytesWrittenToFile = 0;
-    private String boundary;
-    private String uploadFileName;
-    private boolean headersParsed = false;
-    private boolean isChunked = false;
-    private int headerEndIndex = -1;
-    private byte[] remainingHeaderData;
-    private boolean requestComplete = false;
-    private boolean headersReceived = false;
-    private long expectedContentLength = 0;
-    private long totalBytesRead = 0;
-
-    private boolean skippedMultipartHeaders = false;
-    private byte[] boundaryBytes;
-    private boolean inFileContent = false;
-    private boolean foundFileStart = false;
-    private boolean fileComplete = false;
+    private enum ProcessingState {
+        READING_HEADERS,
+        READING_BODY_TO_MEMORY,
+        READING_BODY_TO_FILE,
+        REQUEST_COMPLETE,
+        ERROR
+    }
 
     public ConnectionHandler(SocketChannel channel, ServerBlock server) {
         this.channel = channel;
@@ -69,295 +86,304 @@ public class ConnectionHandler {
         return server;
     }
 
+    /**
+     * STEP 1: Read data from socket and process based on current state
+     */
     public boolean read(ServerBlock server) throws IOException {
         int bytesRead = channel.read(readBuffer);
 
+        // Connection closed by client
         if (bytesRead == -1) {
+            cleanup();
             this.close();
             return false;
         }
 
         totalBytesRead += bytesRead;
 
-        // Check max body size
+        // Check total size limit early
         if (totalBytesRead > server.getClientMaxBodyBytes()) {
-            try {
-                cleanupTempFile();
-                httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
-                prepareResponseBuffer();
-                // ByteBuffer buffer = ByteBuffer.wrap(httpResponse.toString().getBytes());
-                while (writeBuffer.hasRemaining()) {
-                    channel.write(writeBuffer);
-                }
-            } catch (IOException e) {
-                httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
-            }
-            this.close();
+            handleError(HttpStatus.PAYLOAD_TOO_LARGE);
             return false;
         }
 
-        // Process the data
         readBuffer.flip();
         byte[] data = new byte[readBuffer.remaining()];
         readBuffer.get(data);
         readBuffer.clear();
 
-        if (rawBytes == null) {
-            rawBytes = new ByteArrayOutputStream();
-        }
-        // rawBytes.write(data);
-        if (!headersParsed || !isFileUpload) {
-            rawBytes.write(data);
-        }
-
-        // Parse headers to get Content-Length or Transfer-Encoding
-        if (!headersParsed) {
-            String temp = new String(rawBytes.toByteArray());
-            int idx = temp.indexOf("\r\n\r\n");
-            if (idx != -1) {
-                headersParsed = true;
-                headerEndIndex = idx;
-
-                for (String line : temp.substring(0, idx).split("\r\n")) {
-                    String lower = line.toLowerCase();
-                    if (lower.startsWith("content-length:")) {
-                        expectedContentLength = Long.parseLong(line.split(":")[1].trim());
-                    } else if (lower.startsWith("transfer-encoding:") && lower.contains("chunked")) {
-                        // isChunked = true;
-                        expectedContentLength = 0;
-                    }
-                }
-
-                if (isMulltipartForm()) {
-                    isFileUpload = true;
-                    boundary = extractBoundry(temp);
-                    boundaryBytes = ("\r\n--" + boundary).getBytes();
-                    prepareFileUpload();
-
-                    // Process any body data that came with the headers
-                    byte[] bodyData = Arrays.copyOfRange(rawBytes.toByteArray(), idx + 4, rawBytes.size());
-                    if (bodyData.length > 0 && !isChunked) {
-                        processFileData(bodyData);
-                    }
-                    byte[] headersOnly = Arrays.copyOfRange(rawBytes.toByteArray(), 0, idx + 4);
-
-                    String headersStr = new String(headersOnly, StandardCharsets.ISO_8859_1);
-                    headersStr = headersStr.replaceFirst("(?i)Content-Length:\\s*\\d+", "Content-Length: 0");
-                    headersOnly = headersStr.getBytes(StandardCharsets.ISO_8859_1);
-                    // --- CRITICAL FIX END ---
-
-                    // 3. Reset rawBytes with modified headers
-                    rawBytes = new ByteArrayOutputStream();
-                    rawBytes.write(headersOnly);
-                }
-            }
-        } else if (isFileUpload && !fileComplete && !isChunked) {
-            processFileData(data);
-        }
-
-        // if (headersParsed && isChunked) {
-        //     ChunkDecodeResult chunkResult = tryDecodeChunked(rawBytes.toByteArray(), headerEndIndex);
-        //     if (!chunkResult.complete) {
-        //         return false; // need more data
-        //     }
-        //     byte[] decodedBody = chunkResult.body;
-        //     if (decodedBody.length > server.getClientMaxBodyBytes()) {
-        //         cleanupTempFile();
-        //         httpResponse = errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
-        //         ByteBuffer buffer = ByteBuffer.wrap(httpResponse.toString().getBytes());
-        //         while (buffer.hasRemaining()) {
-        //             channel.write(buffer);
-        //         }
-        //         this.close();
-        //         return false;
-        //     }
-        //     // Rebuild raw request with Content-Length and decoded body
-        //     String headersPart = new String(rawBytes.toByteArray(), 0, headerEndIndex, StandardCharsets.ISO_8859_1);
-        //     String normalizedHeaders = normalizeHeaders(headersPart, decodedBody.length);
-        //     rawBytes = new ByteArrayOutputStream();
-        //     rawBytes.write(normalizedHeaders.getBytes(StandardCharsets.ISO_8859_1));
-        //     rawBytes.write(decodedBody);
-        //     expectedContentLength = decodedBody.length;
-        //     if (isFileUpload && !fileComplete) {
-        //         processFileData(decodedBody);
-        //     }
-        //     requestComplete = isFileUpload ? fileComplete : true;
-        // } else 
-        if (headersParsed) {
-            if (isFileUpload) {
-                requestComplete = fileComplete || (expectedContentLength == 0 || bytesWrittenToFile >= expectedContentLength);
-            } else {
-                // For regular requests, check if we have the complete body
-                requestComplete = expectedContentLength == 0 || rawBytes.size() >= expectedContentLength;
-            }
-        }
-
-        return requestComplete;
-    }
-
-    public File getUploadedFile() {
-        if (!isFileUpload || tempFile == null) {
-            return null;
-        }
+        // Process data based on current state
         try {
-            if (tempFileOutputStream != null) {
-                tempFileOutputStream.close();
-                tempFileOutputStream = null;
+            switch (state) {
+                case READING_HEADERS:
+                    return processHeaders(data, server);
+                case READING_BODY_TO_MEMORY:
+                    return processBodyToMemory(data, server);
+                case READING_BODY_TO_FILE:
+                    return processBodyToFile(data, server);
+                case REQUEST_COMPLETE:
+                    return true;
+                case ERROR:
+                    return false;
             }
-        } catch (IOException e) {
-            System.err.println("Error closing temp file output stream: " + e.getMessage());
-        }
-
-        return tempFile;
-    }
-
-    public void cleanupTempFile() {
-        try {
-            if (tempFileOutputStream != null) {
-                tempFileOutputStream.close();
-                tempFileOutputStream = null;
-            }
-
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
-                System.out.println("Deleted temp file: " + tempFile.getPath());
-            }
-        } catch (IOException e) {
-            System.err.println("Error cleaning up temp file: " + e.getMessage());
-        }
-    }
-
-    private void processFileData(byte[] bodyData) throws IOException {
-        if (tempFileOutputStream == null || fileComplete) {
-            return;
-        }
-
-        // If we haven't found the start of the file content yet
-        if (!foundFileStart) {
-            // System.out.println("Searching for start of file content...");
-            String dataStr = new String(bodyData);
-            int contentStart = dataStr.indexOf("\r\n\r\n");
-
-            if (contentStart != -1) {
-                // Found the end of headers, start of file content
-                foundFileStart = true;
-                inFileContent = true;
-
-                // Write only the content after the headers
-                byte[] fileContent = Arrays.copyOfRange(bodyData, contentStart + 4, bodyData.length);
-
-                // Check if this content already contains the end boundary
-                int boundaryPos = findBoundary(fileContent, boundaryBytes);
-                if (boundaryPos != -1) {
-                    // Write content up to the boundary
-                    tempFileOutputStream.write(fileContent, 0, boundaryPos);
-                    bytesWrittenToFile += boundaryPos;
-                    inFileContent = false;
-                    fileComplete = true;
-                    System.out.println("File upload complete: " + bytesWrittenToFile + " bytes");
-                } else {
-                    // Write all content
-                    tempFileOutputStream.write(fileContent);
-                    bytesWrittenToFile += fileContent.length;
-                }
-            }
-            // If we haven't found the start yet, don't write anything
-        } else if (inFileContent) {
-            // We're in the file content, check for the end boundary
-            int boundaryPos = findBoundary(bodyData, boundaryBytes);
-
-            if (boundaryPos != -1) {
-                // Found the end boundary, write content up to it
-                tempFileOutputStream.write(bodyData, 0, boundaryPos);
-                bytesWrittenToFile += boundaryPos;
-                inFileContent = false;
-                fileComplete = true;
-                System.out.println("File upload complete: " + bytesWrittenToFile + " bytes");
-            } else {
-                // No boundary yet, write all content
-                tempFileOutputStream.write(bodyData);
-                bytesWrittenToFile += bodyData.length;
-            }
-        }
-
-        // Log progress for large uploads
-        // if (bytesWrittenToFile % (1024 * 1024) == 0) { // Every 1MB
-        //     System.out.println("Received " + (bytesWrittenToFile / 1024 / 1024) + "MB of "
-        //             + (expectedContentLength / 1024 / 1024) + "MB");
-        // }
-    }
-
-    // Helper method to find boundary in byte array
-    private int findBoundary(byte[] data, byte[] boundary) {
-        if (data == null || boundary == null || data.length < boundary.length) {
-            return -1;
-        }
-
-        for (int i = 0; i <= data.length - boundary.length; i++) {
-            boolean match = true;
-            for (int j = 0; j < boundary.length; j++) {
-                if (data[i + j] != boundary[j]) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private void prepareFileUpload() throws IOException {
-        File uploadDir = new File(System.getProperty("user.home"), "my_server_uploads");
-        if (!uploadDir.exists()) {
-            uploadDir.mkdirs();
-        }
-
-        tempFile = File.createTempFile("uploads", ".tmp", uploadDir);
-        tempFileOutputStream = new FileOutputStream(tempFile);
-
-        // Create metadata file
-        File metadataFile = new File(tempFile.getParent(), tempFile.getName() + ".meta");
-        try (FileWriter writer = new FileWriter(metadataFile)) {
-            // writer.write("original_filename=" + getUploadFileName() + "\n");
-            writer.write("upload_time=" + System.currentTimeMillis() + "\n");
-        }
-
-        System.out.println("Created temp file: " + tempFile.getPath());
-        System.out.println("Created metadata file: " + metadataFile.getPath());
-    }
-
-    private String extractBoundry(String headeString) {
-        String[] lines = headeString.split("\r\n");
-        for (String line : lines) {
-            if (line.toLowerCase().startsWith("content-type: multipart/form-data")) {
-                int boundaryIndex = line.indexOf("boundary=");
-                if (boundaryIndex != -1) {
-                    return line.substring(boundaryIndex + 9);
-                }
-            }
-        }
-        return null;
-    }
-
-    // Add this method to ConnectionHandler class
-    public boolean isFileUpload() {
-        return isFileUpload;
-    }
-
-    private boolean isMulltipartForm() {
-        if (rawBytes == null) {
+        } catch (Exception e) {
+            logger.error("Error processing request", e);
+            handleError(HttpStatus.BAD_REQUEST);
             return false;
         }
-        String tmp = new String(rawBytes.toByteArray());
-        return tmp.toLowerCase().contains("content-type: multipart/form-data");
+
+        return false;
     }
 
+    /**
+     * STEP 2: Process headers (validate size, find header end)
+     */
+    private boolean processHeaders(byte[] data, ServerBlock server) throws IOException {
+        headerBuffer.write(data);
+
+        // Check header size limit (16KB)
+        if (headerBuffer.size() > MAX_HEADER_SIZE) {
+            handleError(HttpStatus.REQUEST_HEADER_FIELDS_TOO_LARGE);
+            return false;
+        }
+
+        // Find header end marker in bytes (no string conversion yet)
+        byte[] headerData = headerBuffer.toByteArray();
+        int headerEnd = findHeaderEnd(headerData);
+
+        if (headerEnd == -1) {
+            // Headers not complete yet, keep reading
+            return false;
+        }
+
+        // STEP 3: Parse and validate headers
+        headerEndIndex = headerEnd;
+        return validateAndProcessHeaders(headerData, headerEnd, server);
+    }
+
+    /**
+     * STEP 3: Validate headers (method, Content-Length, Transfer-Encoding)
+     */
+    private boolean validateAndProcessHeaders(byte[] headerData, int headerEnd, ServerBlock server) 
+            throws IOException {
+        // Convert only headers to string
+        String headersString = new String(headerData, 0, headerEnd, StandardCharsets.ISO_8859_1);
+        String[] lines = headersString.split("\r\n");
+
+        if (lines.length == 0) {
+            handleError(HttpStatus.BAD_REQUEST);
+            return false;
+        }
+
+        // Parse request line
+        String[] requestLine = lines[0].split(" ");
+        if (requestLine.length < 2) {
+            handleError(HttpStatus.BAD_REQUEST);
+            return false;
+        }
+
+        requestMethod = requestLine[0].trim().toUpperCase();
+
+        // Parse headers
+        for (int i = 1; i < lines.length; i++) {
+            String line = lines[i];
+            if (line.isEmpty()) continue;
+
+            int colonIdx = line.indexOf(':');
+            if (colonIdx <= 0) continue;
+
+            String name = line.substring(0, colonIdx).trim().toLowerCase();
+            String value = line.substring(colonIdx + 1).trim();
+
+            switch (name) {
+                case "content-length":
+                    try {
+                        contentLength = Long.parseLong(value);
+                    } catch (NumberFormatException e) {
+                        handleError(HttpStatus.BAD_REQUEST);
+                        return false;
+                    }
+                    break;
+                case "transfer-encoding":
+                    if (value.toLowerCase().contains("chunked")) {
+                        isChunked = true;
+                    }
+                    break;
+                case "content-type":
+                    if (value.toLowerCase().contains("multipart/form-data")) {
+                        isMultipart = true;
+                        boundary = extractBoundary(value);
+                    }
+                    break;
+            }
+        }
+
+        // STEP 4: Validate request requirements
+        if ("POST".equals(requestMethod) || "PUT".equals(requestMethod)) {
+            // POST/PUT must have Content-Length or Transfer-Encoding: chunked
+            if (contentLength == 0 && !isChunked) {
+                handleError(HttpStatus.LENGTH_REQUIRED);
+                return false;
+            }
+        }
+
+        // Check if Content-Length exceeds limit
+        if (contentLength > server.getClientMaxBodyBytes()) {
+            handleError(HttpStatus.PAYLOAD_TOO_LARGE);
+            return false;
+        }
+
+        // Handle chunked encoding
+        if (isChunked) {
+            handleError(HttpStatus.NOT_IMPLEMENTED); // For now, reject chunked
+            return false;
+        }
+
+        // STEP 5: Check if there's body data after headers
+        int bodyStart = headerEnd + 4; // Skip \r\n\r\n
+        byte[] initialBodyData = null;
+        if (bodyStart < headerData.length) {
+            int initialBodyLength = headerData.length - bodyStart;
+            initialBodyData = new byte[initialBodyLength];
+            System.arraycopy(headerData, bodyStart, initialBodyData, 0, initialBodyLength);
+            bodyBytesRead = initialBodyLength;
+        }
+
+        // STEP 6: Decide where to store body (memory vs file)
+        if (contentLength == 0) {
+            // No body expected
+            state = ProcessingState.REQUEST_COMPLETE;
+            return prepareRequest(headerData, headerEnd, new byte[0]);
+        } else if (contentLength <= MEMORY_THRESHOLD) {
+            // Small body - store in memory
+            state = ProcessingState.READING_BODY_TO_MEMORY;
+            bodyBuffer = new ByteArrayOutputStream((int) contentLength);
+            if (initialBodyData != null) {
+                bodyBuffer.write(initialBodyData);
+            }
+        } else {
+            // Large body - store in file
+            state = ProcessingState.READING_BODY_TO_FILE;
+            tempBodyFile = createTempFile();
+            bodyFileStream = new FileOutputStream(tempBodyFile);
+            if (initialBodyData != null) {
+                bodyFileStream.write(initialBodyData);
+            }
+        }
+
+        // Check if body is already complete
+        if (bodyBytesRead >= contentLength) {
+            return finalizeBody(headerData, headerEnd);
+        }
+
+        return false; // Need more data
+    }
+
+    /**
+     * STEP 7: Read body into memory
+     */
+    private boolean processBodyToMemory(byte[] data, ServerBlock server) throws IOException {
+        long remaining = contentLength - bodyBytesRead;
+        int toWrite = (int) Math.min(data.length, remaining);
+
+        bodyBuffer.write(data, 0, toWrite);
+        bodyBytesRead += toWrite;
+
+        if (bodyBytesRead >= contentLength) {
+            return finalizeBody(headerBuffer.toByteArray(), headerEndIndex);
+        }
+
+        return false;
+    }
+
+    /**
+     * STEP 8: Read body into file
+     */
+    private boolean processBodyToFile(byte[] data, ServerBlock server) throws IOException {
+        long remaining = contentLength - bodyBytesRead;
+        int toWrite = (int) Math.min(data.length, remaining);
+
+        bodyFileStream.write(data, 0, toWrite);
+        bodyBytesRead += toWrite;
+
+        if (bodyBytesRead >= contentLength) {
+            bodyFileStream.close();
+            return finalizeBody(headerBuffer.toByteArray(), headerEndIndex);
+        }
+
+        return false;
+    }
+
+    /**
+     * STEP 9: Finalize body and prepare request
+     */
+    private boolean finalizeBody(byte[] headerData, int headerEnd) throws IOException {
+        byte[] body;
+
+        if (bodyBuffer != null) {
+            body = bodyBuffer.toByteArray();
+        } else if (tempBodyFile != null && tempBodyFile.exists()) {
+            // For file uploads, we'll pass empty body but fix Content-Length
+            body = new byte[0];
+        } else {
+            body = new byte[0];
+        }
+
+        state = ProcessingState.REQUEST_COMPLETE;
+        return prepareRequest(headerData, headerEnd, body);
+    }
+
+    /**
+     * STEP 10: Build complete request for parsing
+     */
+    private boolean prepareRequest(byte[] headerData, int headerEnd, byte[] body) throws IOException {
+        // If body is in file, we need to modify Content-Length header to 0
+        // so ParseRequest doesn't expect the body in the byte array
+        if (tempBodyFile != null && tempBodyFile.exists()) {
+            String headersString = new String(headerData, 0, headerEnd, StandardCharsets.ISO_8859_1);
+            
+            // Replace Content-Length with 0
+            String modifiedHeaders = headersString.replaceFirst(
+                "(?i)Content-Length:\\s*\\d+",
+                "Content-Length: 0"
+            );
+            
+            // Rebuild header bytes
+            byte[] modifiedHeaderBytes = modifiedHeaders.getBytes(StandardCharsets.ISO_8859_1);
+            
+            // Build complete request with modified headers
+            ByteArrayOutputStream completeRequest = new ByteArrayOutputStream();
+            completeRequest.write(modifiedHeaderBytes);
+            completeRequest.write("\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1));
+            
+            headerBuffer = new ByteArrayOutputStream();
+            headerBuffer.write(completeRequest.toByteArray());
+        } else {
+            // Normal case: headers + body
+            ByteArrayOutputStream completeRequest = new ByteArrayOutputStream();
+            completeRequest.write(headerData, 0, headerEnd + 4); // Include \r\n\r\n
+            completeRequest.write(body);
+
+            headerBuffer = new ByteArrayOutputStream();
+            headerBuffer.write(completeRequest.toByteArray());
+        }
+
+        return true;
+    }
+
+    /**
+     * STEP 11: Parse and dispatch request
+     */
     public void dispatchRequest() {
         try {
-            httpRequest = ParseRequest.processRequest(rawBytes.toByteArray());
+            httpRequest = ParseRequest.processRequest(headerBuffer.toByteArray());
             httpRequest.setConnectionHandler(this);
+
+            // Attach uploaded file if exists
+            if (tempBodyFile != null && tempBodyFile.exists()) {
+                httpRequest.setUploadedFile(tempBodyFile);
+            }
+
             SessionManager.getInstance().attachSession(httpRequest);
             httpResponse = router.routeRequest(httpRequest, server);
             SessionManager.getInstance().appendSessionCookie(httpRequest, httpResponse);
@@ -368,6 +394,9 @@ public class ConnectionHandler {
         prepareResponseBuffer();
     }
 
+    /**
+     * STEP 12: Write response
+     */
     public boolean write() throws IOException {
         if (writeBuffer == null) {
             return true;
@@ -376,37 +405,83 @@ public class ConnectionHandler {
         channel.write(writeBuffer);
 
         if (!writeBuffer.hasRemaining()) {
-            resetForNextRequest();
+            cleanup();
             return true;
         }
         return false;
     }
 
     public void close() throws IOException {
+        cleanup();
         channel.close();
+    }
+
+    // ==================== Helper Methods ====================
+
+    private int findHeaderEnd(byte[] data) {
+        for (int i = 0; i < data.length - 3; i++) {
+            if (data[i] == '\r' && data[i + 1] == '\n' &&
+                data[i + 2] == '\r' && data[i + 3] == '\n') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private String extractBoundary(String contentType) {
+        int boundaryIdx = contentType.indexOf("boundary=");
+        if (boundaryIdx != -1) {
+            return contentType.substring(boundaryIdx + 9).trim();
+        }
+        return null;
+    }
+
+    private File createTempFile() throws IOException {
+        File uploadDir = new File(System.getProperty("java.io.tmpdir"), "http_uploads");
+        if (!uploadDir.exists()) {
+            uploadDir.mkdirs();
+        }
+        return File.createTempFile("body_", ".tmp", uploadDir);
+    }
+
+    private void handleError(HttpStatus status) {
+        try {
+            cleanup();
+            httpResponse = errorHandler.handle(server, status);
+            prepareResponseBuffer();
+            while (writeBuffer != null && writeBuffer.hasRemaining()) {
+                channel.write(writeBuffer);
+            }
+        } catch (IOException e) {
+            logger.error("Error sending error response", e);
+        } finally {
+            try {
+                this.close();
+            } catch (IOException ignored) {}
+        }
+        state = ProcessingState.ERROR;
     }
 
     private void prepareResponseBuffer() {
         byte[] body = httpResponse.getBody() == null ? new byte[0] : httpResponse.getBody();
 
-        // Get status message
         String reason = httpResponse.getStatusMessage();
         if (reason == null || reason.isEmpty()) {
             HttpStatus statusEnum = resolveStatus(httpResponse.getStatusCode());
             reason = statusEnum != null ? statusEnum.message : "OK";
         }
 
-        // Set default headers
         httpResponse.getHeaders().putIfAbsent(
                 "Date",
                 DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
         httpResponse.getHeaders().putIfAbsent("Connection", "close");
         httpResponse.getHeaders().putIfAbsent("Content-Length", String.valueOf(body.length));
 
-        // Build response
         StringBuilder sb = new StringBuilder();
-        sb.append("HTTP/1.1 ").append(httpResponse.getStatusCode()).append(" ").append(reason).append("\r\n");
-        httpResponse.getHeaders().forEach((k, v) -> sb.append(k).append(": ").append(v).append("\r\n"));
+        sb.append("HTTP/1.1 ").append(httpResponse.getStatusCode()).append(" ")
+          .append(reason).append("\r\n");
+        httpResponse.getHeaders().forEach((k, v) -> 
+            sb.append(k).append(": ").append(v).append("\r\n"));
         sb.append("\r\n");
 
         byte[] headers = sb.toString().getBytes();
@@ -414,29 +489,30 @@ public class ConnectionHandler {
         writeBuffer.put(headers).put(body).flip();
     }
 
-    private void resetForNextRequest() {
-        headersReceived = false;
-        expectedContentLength = 0;
-        totalBytesRead = 0;
-        headersParsed = false;
-        isChunked = false;
-        isFileUpload = false;
-        bytesWrittenToFile = 0;
-        requestComplete = false;
-        boundary = null;
-        headerEndIndex = -1;
-        uploadFileName = null;
-        foundFileStart = false;
-        inFileContent = false;
-        fileComplete = false;
-
-        if (rawBytes != null) {
-            rawBytes = new ByteArrayOutputStream();
+    private void cleanup() {
+        if (bodyFileStream != null) {
+            try {
+                bodyFileStream.close();
+            } catch (IOException ignored) {}
+            bodyFileStream = null;
         }
 
-        httpRequest = null;
-        httpResponse = null;
-        writeBuffer = null;
+        // Don't delete temp file here - it may be needed by UploadHandler
+        // The handler will manage the file lifecycle
+
+        if (bodyBuffer != null) {
+            bodyBuffer = new ByteArrayOutputStream();
+        }
+    }
+
+    public File getUploadedFile() {
+        return tempBodyFile;
+    }
+
+    public void cleanupTempFile() {
+        if (tempBodyFile != null && tempBodyFile.exists()) {
+            tempBodyFile.delete();
+        }
     }
 
     private HttpStatus resolveStatus(int code) {
@@ -447,77 +523,4 @@ public class ConnectionHandler {
         }
         return null;
     }
-
-    // private String normalizeHeaders(String headerSection, long contentLength) {
-    //     StringBuilder sb = new StringBuilder();
-    //     String[] lines = headerSection.split("\r\n");
-    //     for (String line : lines) {
-    //         String lower = line.toLowerCase();
-    //         if (lower.startsWith("transfer-encoding:")) {
-    //             continue;
-    //         }
-    //         if (lower.startsWith("content-length:")) {
-    //             continue;
-    //         }
-    //         sb.append(line).append("\r\n");
-    //     }
-    //     sb.append("Content-Length: ").append(contentLength).append("\r\n\r\n");
-    //     return sb.toString();
-    // }
-    // private ChunkDecodeResult tryDecodeChunked(byte[] data, int headerEnd) {
-    //     int idx = headerEnd + 4;
-    //     ByteArrayOutputStream body = new ByteArrayOutputStream();
-    //     while (idx < data.length) {
-    //         int lineEnd = indexOfCrlf(data, idx);
-    //         if (lineEnd == -1) {
-    //             return ChunkDecodeResult.incomplete();
-    //         }
-    //         String sizeLine = new String(data, idx, lineEnd - idx, StandardCharsets.ISO_8859_1).trim();
-    //         int chunkSize;
-    //         try {
-    //             chunkSize = Integer.parseInt(sizeLine, 16);
-    //         } catch (NumberFormatException e) {
-    //             return ChunkDecodeResult.incomplete();
-    //         }
-    //         idx = lineEnd + 2; // past CRLF
-    //         if (chunkSize == 0) {
-    //             if (idx + 2 <= data.length) {
-    //                 return ChunkDecodeResult.complete(body.toByteArray());
-    //             }
-    //             return ChunkDecodeResult.incomplete();
-    //         }
-    //         if (idx + chunkSize > data.length) {
-    //             return ChunkDecodeResult.incomplete();
-    //         }
-    //         body.write(data, idx, chunkSize);
-    //         idx += chunkSize;
-    //         if (idx + 2 > data.length) {
-    //             return ChunkDecodeResult.incomplete();
-    //         }
-    //         idx += 2; // skip trailing CRLF
-    //     }
-    //     return ChunkDecodeResult.incomplete();
-    // }
-    // private int indexOfCrlf(byte[] data, int start) {
-    //     for (int i = start; i < data.length - 1; i++) {
-    //         if (data[i] == '\r' && data[i + 1] == '\n') {
-    //             return i;
-    //         }
-    //     }
-    //     return -1;
-    // }
-    // private static class ChunkDecodeResult {
-    //     final boolean complete;
-    //     final byte[] body;
-    //     private ChunkDecodeResult(boolean complete, byte[] body) {
-    //         this.complete = complete;
-    //         this.body = body;
-    //     }
-    //     static ChunkDecodeResult complete(byte[] body) {
-    //         return new ChunkDecodeResult(true, body);
-    //     }
-    //     static ChunkDecodeResult incomplete() {
-    //         return new ChunkDecodeResult(false, null);
-    //     }
-    // }
 }

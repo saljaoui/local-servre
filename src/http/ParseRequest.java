@@ -1,24 +1,34 @@
 package http;
 
-import http.model.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
+import http.model.HttpRequest;
+
 public class ParseRequest {
 
+    /**
+     * Process HTTP request from raw bytes
+     * If Content-Length is 0, body validation is skipped (used for file uploads)
+     */
     public static HttpRequest processRequest(byte[] raw) throws Exception {
         HttpRequest req = new HttpRequest();
         byte[] sep = "\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1);
-        
         int headerEnd = indexOf(raw, sep, 0);
-        if (headerEnd == -1) throw new Exception("Bad HTTP: Missing header separator");
+        
+        if (headerEnd == -1) {
+            throw new Exception("Bad HTTP: Missing header separator");
+        }
 
         String headers = new String(raw, 0, headerEnd, StandardCharsets.ISO_8859_1);
         String[] lines = headers.split("\r\n");
-
-        if (lines.length == 0) throw new Exception("Bad HTTP: Empty request");
+        
+        if (lines.length == 0) {
+            throw new Exception("Bad HTTP: Empty request");
+        }
 
         parseRequestLine(lines[0], req);
+        
         for (int i = 1; i < lines.length; i++) {
             parseHeaderLine(lines[i], req);
         }
@@ -35,28 +45,37 @@ public class ParseRequest {
                 : new byte[0];
 
         // Validate Content-Length if present
-        String contentLength = req.getHeader("Content-Length");
-        if (contentLength != null) {
-            int expectedLength = Integer.parseInt(contentLength);
-            if (bodyBytes.length < expectedLength) {
-                throw new Exception("Incomplete body: expected " + expectedLength + 
-                                  ", got " + bodyBytes.length);
+        String contentLengthStr = req.getHeader("Content-Length");
+        if (contentLengthStr != null) {
+            int expectedLength = Integer.parseInt(contentLengthStr);
+            
+            // Skip validation if Content-Length is 0 (file upload case)
+            if (expectedLength > 0) {
+                if (bodyBytes.length < expectedLength) {
+                    throw new Exception("Incomplete body: expected " + expectedLength + 
+                            ", got " + bodyBytes.length);
+                }
+                // Trim body to exact Content-Length
+                bodyBytes = Arrays.copyOf(bodyBytes, expectedLength);
+            } else {
+                // Content-Length is 0, use empty body
+                bodyBytes = new byte[0];
             }
-            // Trim body to exact Content-Length
-            bodyBytes = Arrays.copyOf(bodyBytes, expectedLength);
         }
 
         req.setBody(bodyBytes);
         return req;
     }
 
-    private static void parseRequestLine(String line, HttpRequest request) {
+    private static void parseRequestLine(String line, HttpRequest request) throws Exception {
         String[] p = line.split(" ");
+        if (p.length < 2) {
+            throw new Exception("Invalid request line: " + line);
+        }
         request.setMethod(p[0]);
         request.setUri(p[1]);
-        request.setPath(p[1]);
+        request.setPath(p[1].split("\\?")[0]); // Remove query string from path
         request.setHttpVersion(p.length > 2 ? p[2] : "HTTP/1.1");
-
     }
 
     private static void parseHeaderLine(String line, HttpRequest request) {
@@ -65,7 +84,6 @@ public class ParseRequest {
 
         String name = line.substring(0, colonIndex).trim();
         String value = line.substring(colonIndex + 1).trim();
-
         request.setHeaders(name, value);
 
         if (name.equalsIgnoreCase("Cookie")) {

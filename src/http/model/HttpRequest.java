@@ -3,6 +3,7 @@ package http.model;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
+
 import server.ConnectionHandler;
 
 public class HttpRequest {
@@ -32,19 +33,11 @@ public class HttpRequest {
     }
 
     // ========== FILE UPLOAD METHODS ==========
-    
-    public boolean isFileUpload() {
-        if (connectionHandler != null) {
-            return connectionHandler.isFileUpload();
-        }
-        String contentType = getHeader("Content-Type");
-        return contentType != null && contentType.toLowerCase().contains("multipart/form-data");
+    public ConnectionHandler getConnectionHandler() {
+        return connectionHandler;
     }
 
     public File getUploadedFile() {
-        if (uploadedFile == null && connectionHandler != null) {
-            uploadedFile = connectionHandler.getUploadedFile();
-        }
         return uploadedFile;
     }
 
@@ -53,45 +46,100 @@ public class HttpRequest {
     }
 
     // ========== GETTERS ==========
-    
-    public String getMethod() { return method; }
-    public String getUri() { return uri; }
-    public String getPath() { return path; }
-    public String getQueryString() { return queryString; }
-    public String getHttpVersion() { return httpVersion; }
-    public Map<String, String> getHeaders() { return headers; }
-    public Map<String, String> getQueryParams() { return queryParams; }
-    public Map<String, String> getCookies() { return cookies; }
-    public String getSessionId() { return sessionId; }
-    public boolean isNewSession() { return newSession; }
-    public Map<String, String> getSession() { return sessionData; }
+    public String getMethod() {
+        return method;
+    }
+
+    public String getUri() {
+        return uri;
+    }
+
+    public String getPath() {
+        return path;
+    }
+
+    public String getQueryString() {
+        return queryString;
+    }
+
+    public String getHttpVersion() {
+        return httpVersion;
+    }
+
+    public Map<String, String> getHeaders() {
+        return headers;
+    }
+
+    public Map<String, String> getQueryParams() {
+        return queryParams;
+    }
+
+    public Map<String, String> getCookies() {
+        return cookies;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public boolean isNewSession() {
+        return newSession;
+    }
+
+    public Map<String, String> getSession() {
+        return sessionData;
+    }
 
     public byte[] getBody() {
-        if (isFileUpload()) {
-            return null; // File uploads handled separately
-        }
         return body != null ? body : new byte[0];
     }
 
     // ========== SETTERS ==========
-    
-    public void setMethod(String method) { this.method = method; }
-    public void setUri(String uri) { this.uri = uri; }
-    public void setPath(String path) { this.path = path; }
-    public void setQueryString(String qs) { this.queryString = qs; }
-    public void setHttpVersion(String v) { this.httpVersion = v; }
-    public void setHeaders(Map<String, String> headers) { this.headers = headers; }
-    public void setBody(byte[] body) { this.body = body; }
-    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
-    public void setSessionData(Map<String, String> sessionData) { this.sessionData = sessionData; }
-    public void setNewSession(boolean newSession) { this.newSession = newSession; }
+    public void setMethod(String method) {
+        this.method = method;
+    }
+
+    public void setUri(String uri) {
+        this.uri = uri;
+    }
+
+    public void setPath(String path) {
+        this.path = path;
+    }
+
+    public void setQueryString(String qs) {
+        this.queryString = qs;
+    }
+
+    public void setHttpVersion(String v) {
+        this.httpVersion = v;
+    }
+
+    public void setHeaders(Map<String, String> headers) {
+        this.headers = headers;
+    }
+
+    public void setBody(byte[] body) {
+        this.body = body;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    public void setSessionData(Map<String, String> sessionData) {
+        this.sessionData = sessionData;
+    }
+
+    public void setNewSession(boolean newSession) {
+        this.newSession = newSession;
+    }
 
     // ========== HELPER METHODS ==========
-    
     public void addHeader(String name, String value) {
         this.headers.put(name, value);
     }
-    
+
     public void setHeaders(String name, String value) {
         addHeader(name, value);
     }
@@ -118,15 +166,22 @@ public class HttpRequest {
 
     @Override
     public String toString() {
-        return "HttpRequest{" +
-                "method='" + method + '\'' +
-                ", uri='" + uri + '\'' +
-                ", path='" + path + '\'' +
-                ", queryString='" + queryString + '\'' +
-                ", headers=" + headers +
-                ", queryParams=" + queryParams +
-                ", cookies=" + cookies +
-                ", bodyLength=" + (body != null ? body.length : 0) +
-                '}';
+        return "HttpRequest{"
+                + "method='" + method + '\''
+                + ", uri='" + uri + '\''
+                + ", path='" + path + '\''
+                + ", queryString='" + queryString + '\''
+                + ", headers=" + headers
+                + ", queryParams=" + queryParams
+                + ", cookies=" + cookies
+                + ", bodyLength=" + (body != null ? body.length : 0)
+                + '}';
+    }
+
+  
+
+
+    public void setUploadedFile(File uploadedFile) {
+        this.uploadedFile = uploadedFile;
     }
 }
