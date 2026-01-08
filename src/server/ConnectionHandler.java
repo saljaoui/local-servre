@@ -55,9 +55,6 @@ public class ConnectionHandler {
     private long totalBytesRead = 0;
     private long bodyBytesRead = 0;
     private boolean isChunked = false;
-    private boolean isMultipart = false;
-    private String boundary = null;
-    private String requestMethod = null;
 
     // Response
     private HttpRequest httpRequest;
@@ -67,6 +64,7 @@ public class ConnectionHandler {
         READING_HEADERS,
         READING_BODY_TO_MEMORY,
         READING_BODY_TO_FILE,
+        READING_CHUNKED,
         REQUEST_COMPLETE,
         ERROR
     }
@@ -118,6 +116,9 @@ public class ConnectionHandler {
                     processBodyToMemory(data, server);
                 case READING_BODY_TO_FILE ->
                     processBodyToFile(data, server);
+                case READING_CHUNKED ->
+                    handleChunkedResult(ChunkedRequestProcessor.process(
+                            headerBuffer, data, headerEndIndex, server.getClientMaxBodyBytes()));
                 case REQUEST_COMPLETE ->
                     true;
                 case ERROR ->
@@ -178,7 +179,7 @@ public class ConnectionHandler {
             return false;
         }
 
-        requestMethod = requestLine[0].trim().toUpperCase();
+        String requestMethod = requestLine[0].trim().toUpperCase();
 
         // Parse headers
         for (int i = 1; i < lines.length; i++) {
@@ -211,8 +212,7 @@ public class ConnectionHandler {
                 }
                 case "content-type" -> {
                     if (value.toLowerCase().contains("multipart/form-data")) {
-                        isMultipart = true;
-                        boundary = extractBoundary(value);
+                        // Multipart handled downstream when needed.
                     }
                 }
             }
@@ -235,8 +235,9 @@ public class ConnectionHandler {
 
         // Handle chunked encoding
         if (isChunked) {
-            handleError(HttpStatus.NOT_IMPLEMENTED); // For now, reject chunked
-            return false;
+            state = ProcessingState.READING_CHUNKED;
+            return handleChunkedResult(ChunkedRequestProcessor.process(
+                    headerBuffer, new byte[0], headerEndIndex, server.getClientMaxBodyBytes()));
         }
 
         // STEP 5: Check if there's body data after headers
@@ -297,6 +298,7 @@ public class ConnectionHandler {
         return false;
     }
 
+
     /**
      * STEP 8: Read body into file
      */
@@ -313,6 +315,21 @@ public class ConnectionHandler {
         }
 
         return false;
+    }
+
+    private boolean handleChunkedResult(ChunkedRequestProcessor.Result result) throws IOException {
+        if (result.status == ChunkedRequestProcessor.Result.Status.INCOMPLETE) {
+            return false;
+        }
+        if (result.status == ChunkedRequestProcessor.Result.Status.PAYLOAD_TOO_LARGE) {
+            handleError(HttpStatus.PAYLOAD_TOO_LARGE);
+            return false;
+        }
+
+        headerBuffer = new ByteArrayOutputStream();
+        headerBuffer.write(result.normalizedRequest);
+        state = ProcessingState.REQUEST_COMPLETE;
+        return true;
     }
 
     /**
@@ -428,14 +445,6 @@ public class ConnectionHandler {
         return -1;
     }
 
-    private String extractBoundary(String contentType) {
-        int boundaryIdx = contentType.indexOf("boundary=");
-        if (boundaryIdx != -1) {
-            return contentType.substring(boundaryIdx + 9).trim();
-        }
-        return null;
-    }
-
     private File createTempFile() throws IOException {
         File uploadDir = new File(System.getProperty("java.io.tmpdir"), "http_uploads");
         if (!uploadDir.exists()) {
@@ -508,12 +517,6 @@ public class ConnectionHandler {
 
     public File getUploadedFile() {
         return tempBodyFile;
-    }
-
-    public void cleanupTempFile() {
-        if (tempBodyFile != null && tempBodyFile.exists()) {
-            tempBodyFile.delete();
-        }
     }
 
     private HttpStatus resolveStatus(int code) {
