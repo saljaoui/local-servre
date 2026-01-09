@@ -116,7 +116,7 @@ public class EventLoop {
 
         // Register for READ events and attach a Handler
         SelectionKey clientKey = clientChannel.register(selector, SelectionKey.OP_READ);
-        ConnectionHandler handler = new ConnectionHandler(clientChannel, portContext.getDefaultServer());
+        ConnectionHandler handler = new ConnectionHandler(clientChannel, portContext);
         clientKey.attach(handler); // Attach handler to the key
 
         // Track connection activity
@@ -130,7 +130,7 @@ public class EventLoop {
         SocketChannel channel = (SocketChannel) key.channel();
 
         try {
-            boolean requestComplete = handler.read(handler.getServer());
+            boolean requestComplete = handler.read();
             if (handler.getLastReadBytes() > 0) {
                 touchActivity(channel);
             }

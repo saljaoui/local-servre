@@ -29,11 +29,15 @@ public class DeleteHandler {
         // Determine the file to delete based on route and request path
         String root = route.getRoot();
         if (root == null || root.isEmpty()) {
-            root = "www";
+            root = server != null ? server.getRoot() : "www";
         }
         
         // Remove leading slash from path for file operations
-        String filePathStr = path.startsWith("/") ? path.substring(1) : path;
+        String filePathStr = path;
+        if (route.getPath() != null && filePathStr.startsWith(route.getPath())) {
+            filePathStr = filePathStr.substring(route.getPath().length());
+        }
+        filePathStr = filePathStr.startsWith("/") ? filePathStr.substring(1) : filePathStr;
         File fileToDelete = new File(root, filePathStr);
         
         // Security check: ensure the file is within the allowed directory

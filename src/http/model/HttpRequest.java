@@ -145,7 +145,24 @@ public class HttpRequest {
     }
 
     public String getHeader(String name) {
-        return this.headers.get(name);
+        if (name == null) {
+            return null;
+        }
+        String direct = this.headers.get(name);
+        if (direct != null) {
+            return direct;
+        }
+        String lower = name.toLowerCase();
+        String lowerMatch = this.headers.get(lower);
+        if (lowerMatch != null) {
+            return lowerMatch;
+        }
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(name)) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     public void addQueryParam(String key, String value) {

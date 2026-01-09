@@ -1,5 +1,6 @@
 package http;
 
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
@@ -74,7 +75,12 @@ public class ParseRequest {
         }
         request.setMethod(p[0]);
         request.setUri(p[1]);
-        request.setPath(p[1].split("\\?")[0]); // Remove query string from path
+        String[] uriParts = p[1].split("\\?", 2);
+        request.setPath(uriParts[0]);
+        if (uriParts.length > 1) {
+            request.setQueryString(uriParts[1]);
+            parseQueryParams(uriParts[1], request);
+        }
         request.setHttpVersion(p.length > 2 ? p[2] : "HTTP/1.1");
     }
 
@@ -115,5 +121,25 @@ public class ParseRequest {
             return i;
         }
         return -1;
+    }
+
+    private static void parseQueryParams(String qs, HttpRequest request) {
+        if (qs == null || qs.isEmpty()) return;
+        String[] pairs = qs.split("&");
+        for (String pair : pairs) {
+            if (pair.isEmpty()) continue;
+            String[] kv = pair.split("=", 2);
+            String key = decodeQueryComponent(kv[0]);
+            String value = kv.length > 1 ? decodeQueryComponent(kv[1]) : "";
+            request.addQueryParam(key, value);
+        }
+    }
+
+    private static String decodeQueryComponent(String value) {
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return value;
+        }
     }
 }

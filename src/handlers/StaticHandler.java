@@ -86,34 +86,10 @@ public class StaticHandler {
     private HttpResponse handlePost(HttpRequest request, Route route) {
 
         HttpResponse response = new HttpResponse();
-        if (route.getPath().equals("/") && request.getMethod().equals("POST")) {
-            String body = new String(request.getBody(), StandardCharsets.UTF_8);
-            response.setStatus(HttpStatus.CREATED);
-            response.setBody(("Content: " + body).getBytes(StandardCharsets.UTF_8));
-            response.addHeader("Content-Type", "text/plain; charset=UTF-8");
-            return response;
-        }
-        // System.err.println("here "+route.isUploadEnabled());
-        // if (!route.isUploadEnabled()) {
-        //     return errorHandler.handle(server, HttpStatus.FORBIDDEN);
-        // }
-        // try +{
-        //     byte[] body = request.getBody();
-        //     if (body == null) {
-        //         body = new byte[0];
-        //     }
-
-        //     if (body.length > server.getClientMaxBodyBytes()) {
-        //         return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
-        //     }
-        //     Files.write(filePath, body, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        //     response.setStatus(HttpStatus.CREATED);
-        //     response.setBody(("File uploaded: " + filePath.getFileName()).getBytes());
-        //     response.addHeader("Content-Type", "text/plain");
-        // } catch (IOException e) {
-        //     logger.error("Error uploading file: " + filePath, e);
-        //     return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
-        // }
+        String body = new String(request.getBody(), StandardCharsets.UTF_8);
+        response.setStatus(HttpStatus.CREATED);
+        response.setBody(("Content: " + body).getBytes(StandardCharsets.UTF_8));
+        response.addHeader("Content-Type", "text/plain; charset=UTF-8");
         return response;
     }
 

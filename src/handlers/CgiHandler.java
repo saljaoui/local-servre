@@ -9,6 +9,7 @@ import routing.model.Route;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -80,11 +81,7 @@ public class CgiHandler {
         try {
             Process p = pb.start();
             
-            if (request.getBody() != null && request.getBody().length > 0) {
-                try (OutputStream os = p.getOutputStream()) {
-                    os.write(request.getBody());
-                }
-            }
+            writeRequestBody(p.getOutputStream(), request);
 
             byte[] output = readAll(p.getInputStream());
             return p.waitFor() == 0 ? parseCgiOutput(output) : error(server, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -102,8 +99,7 @@ public class CgiHandler {
         
         env.put("REQUEST_METHOD", request.getMethod() != null ? request.getMethod() : "GET");
         env.put("QUERY_STRING", getQueryString(request));
-        env.put("CONTENT_LENGTH", getHeader(request, "Content-Length", 
-            request.getBody() != null ? String.valueOf(request.getBody().length) : ""));
+        env.put("CONTENT_LENGTH", getContentLengthForCgi(request));
         
         String ct = getHeader(request, "Content-Type", "");
         if (!ct.isEmpty()) env.put("CONTENT_TYPE", ct);
@@ -132,6 +128,46 @@ public class CgiHandler {
             if (idx >= 0) return path.substring(idx + 1);
         }
         return "";
+    }
+
+    private void writeRequestBody(OutputStream outputStream, HttpRequest request) throws IOException {
+        byte[] body = request.getBody();
+        if (body != null && body.length > 0) {
+            try (OutputStream os = outputStream) {
+                os.write(body);
+            }
+            return;
+        }
+
+        File uploaded = request.getUploadedFile();
+        if (uploaded == null || !uploaded.exists()) {
+            outputStream.close();
+            return;
+        }
+
+        try (OutputStream os = outputStream; FileInputStream fis = new FileInputStream(uploaded)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) != -1) {
+                os.write(buf, 0, n);
+            }
+        }
+    }
+
+    private String getContentLengthForCgi(HttpRequest request) {
+        String header = getHeader(request, "Content-Length", "");
+        if (header != null && !header.isEmpty() && !"0".equals(header)) {
+            return header;
+        }
+        byte[] body = request.getBody();
+        if (body != null && body.length > 0) {
+            return String.valueOf(body.length);
+        }
+        File uploaded = request.getUploadedFile();
+        if (uploaded != null && uploaded.exists()) {
+            return String.valueOf(uploaded.length());
+        }
+        return header != null ? header : "";
     }
 
     private HttpResponse parseCgiOutput(byte[] rawBytes) {

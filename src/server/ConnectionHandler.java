@@ -35,7 +35,8 @@ public class ConnectionHandler {
     private int lastWriteBytes;
 
     // Configuration
-    private final ServerBlock server;
+    private final Server.PortContext portContext;
+    private ServerBlock server;
     private final Router router;
     private final ErrorHandler errorHandler;
 
@@ -73,9 +74,10 @@ public class ConnectionHandler {
         ERROR
     }
 
-    public ConnectionHandler(SocketChannel channel, ServerBlock server) {
+    public ConnectionHandler(SocketChannel channel, Server.PortContext portContext) {
         this.channel = channel;
-        this.server = server;
+        this.portContext = portContext;
+        this.server = portContext != null ? portContext.getDefaultServer() : null;
         this.router = new Router();
         this.errorHandler = new ErrorHandler();
     }
@@ -88,7 +90,7 @@ public class ConnectionHandler {
      * Read data from socket and process based on current state.
      * Returns true when request is fully buffered/decoded and ready for dispatchRequest().
      */
-    public boolean read(ServerBlock server) throws IOException {
+    public boolean read() throws IOException {
         int bytesRead = channel.read(readBuffer);
         lastReadBytes = bytesRead;
 
@@ -110,9 +112,9 @@ public class ConnectionHandler {
 
         try {
             return switch (state) {
-                case READING_HEADERS -> readHeaders(data, server);
+                case READING_HEADERS -> readHeaders(data);
                 case READING_BODY_TO_MEMORY, READING_BODY_TO_FILE,
-                        READING_CHUNK_SIZE, READING_CHUNK_DATA, READING_CHUNK_TRAILERS -> readBody(data, server);
+                        READING_CHUNK_SIZE, READING_CHUNK_DATA, READING_CHUNK_TRAILERS -> readBody(data);
                 case REQUEST_COMPLETE -> true;
                 case ERROR -> false;
             };
@@ -131,7 +133,7 @@ public class ConnectionHandler {
         }
     }
 
-    private boolean readHeaders(byte[] data, ServerBlock server) throws IOException {
+    private boolean readHeaders(byte[] data) throws IOException {
         headerReader.feed(data);
 
         if (headerReader.isTooLarge()) {
@@ -147,7 +149,7 @@ public class ConnectionHandler {
         rawHeaderBytes = headerReader.getRawHeaderBytes();
         byte[] initialBodyBytes = headerReader.getInitialBodyBytes();
 
-        if (!parseAndInitBody(rawHeaderBytes, server)) {
+        if (!parseAndInitBody(rawHeaderBytes)) {
             return false;
         }
 
@@ -156,13 +158,13 @@ public class ConnectionHandler {
         }
 
         if (initialBodyBytes.length > 0) {
-            return readBody(initialBodyBytes, server);
+            return readBody(initialBodyBytes);
         }
 
         return false;
     }
 
-    private boolean readBody(byte[] data, ServerBlock server) throws IOException {
+    private boolean readBody(byte[] data) throws IOException {
         if (bodyReceiver == null) {
             handleError(HttpStatus.BAD_REQUEST);
             return false;
@@ -180,7 +182,7 @@ public class ConnectionHandler {
         return false;
     }
 
-    private boolean parseAndInitBody(byte[] headerBytesWithCrlfCrlf, ServerBlock server) throws IOException {
+    private boolean parseAndInitBody(byte[] headerBytesWithCrlfCrlf) throws IOException {
         int headerEnd = findHeaderEnd(headerBytesWithCrlfCrlf);
         if (headerEnd == -1) {
             handleError(HttpStatus.BAD_REQUEST);
@@ -207,6 +209,7 @@ public class ConnectionHandler {
         isChunked = false;
 
         // Parse headers
+        String hostHeader = null;
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i];
             if (line.isEmpty()) continue;
@@ -218,6 +221,7 @@ public class ConnectionHandler {
             String value = line.substring(colonIdx + 1).trim();
 
             switch (name) {
+                case "host" -> hostHeader = value;
                 case "content-length" -> {
                     try {
                         contentLength = Long.parseLong(value);
@@ -236,6 +240,17 @@ public class ConnectionHandler {
         }
 
         logger.info("method=" + requestMethod + " isChunked=" + isChunked + " contentLength=" + contentLength);
+
+        if (portContext != null) {
+            ServerBlock selected = portContext.selectServer(hostHeader);
+            if (selected != null) {
+                this.server = selected;
+            }
+        }
+        if (server == null) {
+            handleError(HttpStatus.BAD_REQUEST);
+            return false;
+        }
 
         // If POST, must have body framing (Content-Length OR chunked)
         if ("POST".equals(requestMethod)) {

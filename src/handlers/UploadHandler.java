@@ -7,9 +7,10 @@ import http.model.HttpResponse;
 import http.model.HttpStatus;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files; // Import the fixed parser
+import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import routing.model.Route;
+import util.MultipartParser;
 
 public class UploadHandler {
 
@@ -41,7 +42,6 @@ public class UploadHandler {
 
         // 4. Get Body (multipart upload saved to temp file or raw body)
         File uploadFile = request.getUploadedFile();
-
         byte[] rawBody = request.getBody();
         boolean hasFile = uploadFile != null && uploadFile.exists();
         boolean hasRaw = rawBody != null && rawBody.length > 0;
@@ -63,14 +63,18 @@ public class UploadHandler {
 
         try {
             if (hasFile) {
-                // 8a. Move temp file to destination
-                Files.move(
-                        uploadFile.toPath(),
-                        destinationFile.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING);
+                byte[] extracted = extractMultipartIfNeeded(request, uploadFile);
+                if (extracted != null) {
+                    Files.write(destinationFile.toPath(), extracted);
+                } else {
+                    Files.move(
+                            uploadFile.toPath(),
+                            destinationFile.toPath(),
+                            StandardCopyOption.REPLACE_EXISTING);
+                }
             } else {
-                // 8b. Write raw body to destination
-                Files.write(destinationFile.toPath(), rawBody);
+                byte[] extracted = extractMultipartIfNeeded(request, rawBody);
+                Files.write(destinationFile.toPath(), extracted != null ? extracted : rawBody);
             }
 
             if (hasFile) {
@@ -90,5 +94,25 @@ public class UploadHandler {
         }
 
         return response;
+    }
+
+    private byte[] extractMultipartIfNeeded(HttpRequest request, byte[] rawBody) {
+        String ct = request.getHeader("Content-Type");
+        if (ct == null || !ct.toLowerCase().contains("multipart/form-data")) {
+            return null;
+        }
+        return MultipartParser.extractFileContent(request);
+    }
+
+    private byte[] extractMultipartIfNeeded(HttpRequest request, File rawFile) throws IOException {
+        String ct = request.getHeader("Content-Type");
+        if (ct == null || !ct.toLowerCase().contains("multipart/form-data")) {
+            return null;
+        }
+        byte[] rawBody = Files.readAllBytes(rawFile.toPath());
+        HttpRequest clone = new HttpRequest();
+        clone.setHeaders(request.getHeaders());
+        clone.setBody(rawBody);
+        return MultipartParser.extractFileContent(clone);
     }
 }
