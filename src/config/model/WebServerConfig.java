@@ -3,13 +3,11 @@ package config.model;
 import java.util.*;
 
 import routing.model.Route;
-import util.SonicLogger;
 
 public class WebServerConfig {
 
     private long timeouts;
     private List<ServerBlock> servers;
-    private static final SonicLogger logger = SonicLogger.getLogger(WebServerConfig.class);
 
     // Getters and Setters
     public long getTimeouts() {

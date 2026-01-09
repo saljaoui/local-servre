@@ -23,6 +23,9 @@ public class CgiHandler {
         if (cfg == null || !cfg.isEnabled()) {
             return error(server, HttpStatus.NOT_FOUND);
         }
+        if (route == null || route.getPath() == null) {
+            return error(server, HttpStatus.NOT_FOUND);
+        }
 
         String scriptPath = extractScriptPath(request.getPath(), route.getPath());
         if (scriptPath.isEmpty()) {

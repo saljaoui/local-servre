@@ -71,14 +71,6 @@ public class RequestReader {
 
     }
 
-    private boolean isMulltipartForm() {
-        if (rawBytes == null) {
-            return false;
-        }
-        String tmp = new String(rawBytes.toByteArray());
-        return tmp.toLowerCase().contains("content-type: multipart/form-data");
-    }
-
     private boolean isRequestComplete() {
         if (!headersParsed) {
             return false;

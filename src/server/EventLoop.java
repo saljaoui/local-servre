@@ -61,10 +61,6 @@ public class EventLoop {
         }
     }
 
-    static void removeTracking(SocketChannel channel) {
-        connectionActivity.remove(channel);
-    }
-
     private static void checkTimeouts(Selector selector, long bodyIdleTimeoutMs) {
         long currentTime = System.currentTimeMillis();
         Iterator<Map.Entry<SocketChannel, ConnActivity>> iter = connectionActivity.entrySet().iterator();

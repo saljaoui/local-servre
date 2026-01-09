@@ -29,7 +29,7 @@ public class StaticHandler {
             case "GET" ->
                 handleGet(filePath, request, route, server);
             case "POST" ->
-                handlePost(request, route);
+                handlePost(request);
             default ->
                 errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         };
@@ -83,7 +83,7 @@ public class StaticHandler {
         return response;
     }
 
-    private HttpResponse handlePost(HttpRequest request, Route route) {
+    private HttpResponse handlePost(HttpRequest request) {
 
         HttpResponse response = new HttpResponse();
         String body = new String(request.getBody(), StandardCharsets.UTF_8);

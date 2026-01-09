@@ -3,7 +3,6 @@ package http.model;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
-
 import server.ConnectionHandler;
 
 public class HttpRequest {
@@ -14,8 +13,8 @@ public class HttpRequest {
     private String queryString;
     private String httpVersion;
     private Map<String, String> headers;
-    private Map<String, String> queryParams;
-    private Map<String, String> cookies;
+    private final  Map<String, String> queryParams;
+    private final Map<String, String> cookies;
     private byte[] body;
     private File uploadedFile;
     private ConnectionHandler connectionHandler;

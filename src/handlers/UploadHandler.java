@@ -63,21 +63,22 @@ public class UploadHandler {
 
         try {
             if (hasFile) {
-                byte[] extracted = extractMultipartIfNeeded(request, uploadFile);
-                if (extracted != null) {
-                    Files.write(destinationFile.toPath(), extracted);
-                } else {
+                if (uploadFile == null) {
+                    return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
+                }
+                boolean extracted = extractMultipartIfNeeded(request, uploadFile, destinationFile);
+                if (!extracted) {
                     Files.move(
                             uploadFile.toPath(),
                             destinationFile.toPath(),
                             StandardCopyOption.REPLACE_EXISTING);
                 }
             } else {
-                byte[] extracted = extractMultipartIfNeeded(request, rawBody);
+                byte[] extracted = extractMultipartIfNeeded(request);
                 Files.write(destinationFile.toPath(), extracted != null ? extracted : rawBody);
             }
 
-            if (hasFile) {
+            if (hasFile && uploadFile != null) {
                 System.out.println("[UPLOAD] File moved from: " + uploadFile.getAbsolutePath());
             }
             System.out.println("[UPLOAD] File moved to: " + destinationFile.getAbsolutePath());
@@ -89,14 +90,13 @@ public class UploadHandler {
             response.setBody(msg.getBytes());
 
         } catch (IOException e) {
-            e.printStackTrace();
             return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         return response;
     }
 
-    private byte[] extractMultipartIfNeeded(HttpRequest request, byte[] rawBody) {
+    private byte[] extractMultipartIfNeeded(HttpRequest request) {
         String ct = request.getHeader("Content-Type");
         if (ct == null || !ct.toLowerCase().contains("multipart/form-data")) {
             return null;
@@ -104,15 +104,11 @@ public class UploadHandler {
         return MultipartParser.extractFileContent(request);
     }
 
-    private byte[] extractMultipartIfNeeded(HttpRequest request, File rawFile) throws IOException {
+    private boolean extractMultipartIfNeeded(HttpRequest request, File rawFile, File destination) throws IOException {
         String ct = request.getHeader("Content-Type");
         if (ct == null || !ct.toLowerCase().contains("multipart/form-data")) {
-            return null;
+            return false;
         }
-        byte[] rawBody = Files.readAllBytes(rawFile.toPath());
-        HttpRequest clone = new HttpRequest();
-        clone.setHeaders(request.getHeaders());
-        clone.setBody(rawBody);
-        return MultipartParser.extractFileContent(clone);
+        return MultipartParser.extractFileContentToFile(rawFile, ct, destination);
     }
 }

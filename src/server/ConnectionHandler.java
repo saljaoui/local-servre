@@ -348,7 +348,9 @@ public class ConnectionHandler {
 
     public void close() throws IOException {
         cleanupStreamsOnly();
-        channel.close();
+        try (channel) {
+            // no-op; try-with-resources ensures close
+        }
     }
 
     public int getLastReadBytes() {
