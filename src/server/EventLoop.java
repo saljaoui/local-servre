@@ -15,16 +15,18 @@ import util.SonicLogger;
 public class EventLoop {
 
     private static final SonicLogger logger = SonicLogger.getLogger(EventLoop.class);
-    private static final Map<SocketChannel, Long> connectionActivity = new HashMap<>();
+    private static final long HEADER_TIMEOUT_MS = 10_000;
+    private static final long DEFAULT_BODY_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+    private static final Map<SocketChannel, ConnActivity> connectionActivity = new HashMap<>();
 
     public static void loop(Selector selector, WebServerConfig config) throws IOException {
         logger.info("EventLoop started thread:" + Thread.currentThread().getName());
 
-        long timeoutMillis = config.getTimeouts();
-        logger.info("Timeout configured: " + timeoutMillis + "ms");
+        long bodyIdleTimeoutMs = config.getTimeouts() > 0 ? config.getTimeouts() : DEFAULT_BODY_IDLE_TIMEOUT_MS;
+        logger.info("Timeouts configured: header=" + HEADER_TIMEOUT_MS + "ms, bodyIdle=" + bodyIdleTimeoutMs + "ms");
 
         while (true) {
-            checkTimeouts(timeoutMillis);
+            checkTimeouts(selector, bodyIdleTimeoutMs);
 
             // Wait for events (1 second timeout)
             selector.select(1000);
@@ -63,44 +65,39 @@ public class EventLoop {
         connectionActivity.remove(channel);
     }
 
-    private static void checkTimeouts(long timeoutMillis) {
+    private static void checkTimeouts(Selector selector, long bodyIdleTimeoutMs) {
         long currentTime = System.currentTimeMillis();
-        Iterator<Map.Entry<SocketChannel, Long>> iter = connectionActivity.entrySet().iterator();
+        Iterator<Map.Entry<SocketChannel, ConnActivity>> iter = connectionActivity.entrySet().iterator();
 
         while (iter.hasNext()) {
-            Map.Entry<SocketChannel, Long> entry = iter.next();
-            long elapsed = currentTime - entry.getValue();
+            Map.Entry<SocketChannel, ConnActivity> entry = iter.next();
+            SocketChannel channel = entry.getKey();
+            ConnActivity activity = entry.getValue();
+            SelectionKey key = channel.keyFor(selector);
 
-            if (elapsed > timeoutMillis) {
-                SocketChannel channel = entry.getKey();
+            if (key == null || !key.isValid()) {
+                iter.remove();
+                continue;
+            }
+
+            ConnectionHandler handler = (ConnectionHandler) key.attachment();
+            if (handler == null) {
+                iter.remove();
+                continue;
+            }
+
+            long timeoutMs = handler.isReadingHeaders() ? HEADER_TIMEOUT_MS : bodyIdleTimeoutMs;
+            long elapsed = currentTime - activity.lastActivityMs;
+
+            if (elapsed > timeoutMs) {
                 logger.info("Timeout for client: " + channel.socket().getRemoteSocketAddress() +
                         " (idle for " + elapsed + "ms)");
 
-                try {
-                    sendTimeoutResponse(channel);
-                    channel.close();
-                } catch (IOException e) {
-                    logger.error("Error closing timed out connection: " + e.getMessage());
-                }
+                handler.forceError(http.model.HttpStatus.REQUEST_TIMEOUT);
+                key.interestOps(SelectionKey.OP_WRITE);
 
                 iter.remove();
             }
-        }
-    }
-
-    private static void sendTimeoutResponse(SocketChannel channel) {
-        try {
-            String response = "HTTP/1.1 408 Request Timeout\r\n" +
-                    "Content-Type: text/html\r\n" +
-                    "Content-Length: 50\r\n" +
-                    "Connection: close\r\n" +
-                    "\r\n" +
-                    "<html><body><h1>408 Request Timeout</h1></body></html>";
-
-            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(response.getBytes());
-            channel.write(buffer);
-        } catch (IOException e) {
-            // Ignore errors when sending timeout response
         }
     }
 
@@ -123,20 +120,20 @@ public class EventLoop {
         clientKey.attach(handler); // Attach handler to the key
 
         // Track connection activity
-        connectionActivity.put(clientChannel, System.currentTimeMillis());
+        connectionActivity.put(clientChannel, new ConnActivity(System.currentTimeMillis()));
 
         // logger.info("Client connected: " + clientChannel.getRemoteAddress());
     }
 
     private static void handleRead(SelectionKey key) throws IOException {
         ConnectionHandler handler = (ConnectionHandler) key.attachment();
-
-        // Update activity time
         SocketChannel channel = (SocketChannel) key.channel();
-        connectionActivity.put(channel, System.currentTimeMillis());
 
         try {
             boolean requestComplete = handler.read(handler.getServer());
+            if (handler.getLastReadBytes() > 0) {
+                touchActivity(channel);
+            }
 
             if (requestComplete) {
                 handler.dispatchRequest();
@@ -181,12 +178,13 @@ public class EventLoop {
             return;
         }
 
-        // Update activity time
         SocketChannel channel = (SocketChannel) key.channel();
-        connectionActivity.put(channel, System.currentTimeMillis());
 
         try {
             boolean finished = handler.write();
+            if (handler.getLastWriteBytes() > 0) {
+                touchActivity(channel);
+            }
             if (finished) {
                 closeConnection(key);
             }
@@ -198,4 +196,20 @@ public class EventLoop {
         }
     }
 
+    private static void touchActivity(SocketChannel channel) {
+        ConnActivity activity = connectionActivity.get(channel);
+        if (activity != null) {
+            activity.lastActivityMs = System.currentTimeMillis();
+        } else {
+            connectionActivity.put(channel, new ConnActivity(System.currentTimeMillis()));
+        }
+    }
+
+    private static final class ConnActivity {
+        private long lastActivityMs;
+
+        private ConnActivity(long lastActivityMs) {
+            this.lastActivityMs = lastActivityMs;
+        }
+    }
 }
