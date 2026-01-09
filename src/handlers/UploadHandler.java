@@ -49,7 +49,19 @@ public class UploadHandler {
             return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
 
-        long fileSize = hasFile ? uploadFile.length() : rawBody.length;
+        long fileSize;
+        if (hasFile) {
+            File checkedUploadFile = uploadFile;
+            if (checkedUploadFile == null) {
+                return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
+            }
+            fileSize = checkedUploadFile.length();
+        } else {
+            if (rawBody == null) {
+                return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
+            }
+            fileSize = rawBody.length;
+        }
 
         // 6. Check Size (Server Limit)
         long maxBodySize = server.getClientMaxBodyBytes();

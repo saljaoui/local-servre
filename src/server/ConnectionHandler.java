@@ -126,7 +126,7 @@ public class ConnectionHandler {
             logger.error("Error processing request", e);
             handleError(HttpStatus.PAYLOAD_TOO_LARGE);
             return false;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             logger.error("Error processing request", e);
             handleError(HttpStatus.BAD_REQUEST);
             return false;
