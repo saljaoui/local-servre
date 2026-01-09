@@ -246,7 +246,8 @@ public class WebServerConfig {
                 }
 
                 if (portInfo.containsKey(port)) {
-                    logger.warn("Port " + port + " is shared by multiple server blocks (Server: " + server.getName() + ").");
+                    throw new IllegalArgumentException("Duplicate port configuration: " + port
+                            + " (Server: " + server.getName() + ")");
                 }
 
                 portInfo.putIfAbsent(port, new PortInfo());
