@@ -6,11 +6,11 @@ import http.model.HttpRequest;
 import http.model.HttpResponse;
 import http.model.HttpStatus;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import routing.model.Route;
-import util.MultipartParser;
 
 public class UploadHandler {
 
@@ -18,19 +18,16 @@ public class UploadHandler {
 
     public HttpResponse handle(HttpRequest request, Route route, ServerBlock server) {
         HttpResponse response = new HttpResponse();
-        // 1. Check if upload is enabled
+        
         Upload upload = route.getUpload();
         if (upload == null || !upload.isEnabled()) {
             return errorHandler.handle(server, HttpStatus.FORBIDDEN);
         }
 
-        // 2. Check Method
-        String method = request.getMethod();
-        if (!"POST".equalsIgnoreCase(method)) {
+        if (!"POST".equalsIgnoreCase(request.getMethod())) {
             return errorHandler.handle(server, HttpStatus.METHOD_NOT_ALLOWED);
         }
 
-        // 3. Get Upload Directory
         String uploadDir = upload.getDir();
         if (uploadDir == null || uploadDir.isEmpty()) {
             uploadDir = "uploads";
@@ -40,66 +37,35 @@ public class UploadHandler {
             uploadDirectory.mkdirs();
         }
 
-        // 4. Get Body (multipart upload saved to temp file or raw body)
         File uploadFile = request.getUploadedFile();
         byte[] rawBody = request.getBody();
         boolean hasFile = uploadFile != null && uploadFile.exists();
         boolean hasRaw = rawBody != null && rawBody.length > 0;
+        
         if (!hasFile && !hasRaw) {
             return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
         }
 
-        long fileSize;
-        if (hasFile) {
-            File checkedUploadFile = uploadFile;
-            if (checkedUploadFile == null) {
-                return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
-            }
-            fileSize = checkedUploadFile.length();
-        } else {
-            if (rawBody == null) {
-                return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
-            }
-            fileSize = rawBody.length;
-        }
-
-        // 6. Check Size (Server Limit)
-        long maxBodySize = server.getClientMaxBodyBytes();
-        if (fileSize > maxBodySize) {
+        long fileSize = hasFile ? uploadFile.length() : rawBody.length;
+        if (fileSize > server.getClientMaxBodyBytes()) {
             return errorHandler.handle(server, HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
-        String filename= System.currentTimeMillis() + "_" + java.util.UUID.randomUUID().toString().substring(0, 8);
-        // 7. Create destination file
+        String extension = detectExtension(uploadFile, rawBody);
+        String filename = System.currentTimeMillis() + "_" + 
+                         java.util.UUID.randomUUID().toString().substring(0, 8) + extension;
         File destinationFile = new File(uploadDirectory, filename);
 
         try {
             if (hasFile) {
-                if (uploadFile == null) {
-                    return errorHandler.handle(server, HttpStatus.BAD_REQUEST);
-                }
-                boolean extracted = extractMultipartIfNeeded(request, uploadFile, destinationFile);
-                if (!extracted) {
-                    Files.move(
-                            uploadFile.toPath(),
-                            destinationFile.toPath(),
-                            StandardCopyOption.REPLACE_EXISTING);
-                }
+                Files.move(uploadFile.toPath(), destinationFile.toPath(), 
+                          StandardCopyOption.REPLACE_EXISTING);
             } else {
-                byte[] extracted = extractMultipartIfNeeded(request);
-                Files.write(destinationFile.toPath(), extracted != null ? extracted : rawBody);
+                Files.write(destinationFile.toPath(), rawBody);
             }
 
-            if (hasFile && uploadFile != null) {
-                System.out.println("[UPLOAD] File moved from: " + uploadFile.getAbsolutePath());
-            }
-            System.out.println("[UPLOAD] File moved to: " + destinationFile.getAbsolutePath());
-            System.out.println("[UPLOAD] File size: " + destinationFile.length() + " bytes");
-
-            // 9. Build Response
             response.setStatus(HttpStatus.OK);
-            String msg = "File uploaded successfully: " + filename;
-            response.setBody(msg.getBytes());
+            response.setBody(("File uploaded successfully: " + filename).getBytes());
 
         } catch (IOException e) {
             return errorHandler.handle(server, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -108,19 +74,46 @@ public class UploadHandler {
         return response;
     }
 
-    private byte[] extractMultipartIfNeeded(HttpRequest request) {
-        String ct = request.getHeader("Content-Type");
-        if (ct == null || !ct.toLowerCase().contains("multipart/form-data")) {
-            return null;
+    private String detectExtension(File file, byte[] data) {
+        byte[] magic = new byte[12];
+        
+        if (file != null) {
+            try (FileInputStream fis = new FileInputStream(file)) {
+                fis.read(magic);
+            } catch (IOException e) {
+                return "";
+            }
+        } else if (data != null && data.length >= 12) {
+            System.arraycopy(data, 0, magic, 0, 12);
+        } else {
+            return "";
         }
-        return MultipartParser.extractFileContent(request);
-    }
 
-    private boolean extractMultipartIfNeeded(HttpRequest request, File rawFile, File destination) throws IOException {
-        String ct = request.getHeader("Content-Type");
-        if (ct == null || !ct.toLowerCase().contains("multipart/form-data")) {
-            return false;
+        // MP4: ftyp at bytes 4-7
+        if (magic.length >= 8 && new String(magic, 4, 4).startsWith("ftyp")) {
+            return ".mp4";
         }
-        return MultipartParser.extractFileContentToFile(rawFile, ct, destination);
+        // PNG: 89 50 4E 47
+        if (magic[0] == (byte)0x89 && magic[1] == 0x50 && magic[2] == 0x4E && magic[3] == 0x47) {
+            return ".png";
+        }
+        // JPEG: FF D8 FF
+        if (magic[0] == (byte)0xFF && magic[1] == (byte)0xD8 && magic[2] == (byte)0xFF) {
+            return ".jpg";
+        }
+        // GIF: 47 49 46 38
+        if (magic[0] == 0x47 && magic[1] == 0x49 && magic[2] == 0x46 && magic[3] == 0x38) {
+            return ".gif";
+        }
+        // PDF: 25 50 44 46
+        if (magic[0] == 0x25 && magic[1] == 0x50 && magic[2] == 0x44 && magic[3] == 0x46) {
+            return ".pdf";
+        }
+        // ZIP: 50 4B 03 04
+        if (magic[0] == 0x50 && magic[1] == 0x4B && magic[2] == 0x03 && magic[3] == 0x04) {
+            return ".zip";
+        }
+        
+        return "";
     }
 }
